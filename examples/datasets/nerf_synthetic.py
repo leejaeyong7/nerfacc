@@ -6,7 +6,7 @@ import collections
 import json
 import os
 
-import imageio.v2 as imageio
+import imageio
 import numpy as np
 import torch
 import torch.nn.functional as F

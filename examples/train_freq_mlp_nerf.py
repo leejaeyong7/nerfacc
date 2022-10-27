@@ -115,10 +115,21 @@ if __name__ == "__main__":
     grad_scaler = torch.cuda.amp.GradScaler(1)
     # radiance_field = VanillaNeRFRadianceField().to(device)
     radiance_field = FreqNeRFRadianceField().to(device)
-    optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
-    grid_optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
+    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=5e-3)
+    # grid_optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
+        milestones=[
+            max_steps // 2,
+            max_steps * 3 // 4,
+            max_steps * 5 // 6,
+            max_steps * 9 // 10,
+        ],
+        gamma=0.33,
+    )
+    grid_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        grid_optimizer,
         milestones=[
             max_steps // 2,
             max_steps * 3 // 4,
@@ -227,10 +238,13 @@ if __name__ == "__main__":
             loss = F.smooth_l1_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
 
             optimizer.zero_grad()
+            grid_optimizer.zero_grad()
             # do not unscale it because we are using Adam.
             grad_scaler.scale(loss).backward()
             optimizer.step()
             scheduler.step()
+            grid_optimizer.step()
+            grid_scheduler.step()
 
             mse_loss = F.mse_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
             # if step % 5000 == 0:
