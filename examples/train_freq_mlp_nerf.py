@@ -60,7 +60,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test_chunk_size",
         type=int,
-        default=8192,
+        default=4096,
     )
     parser.add_argument(
         "--unbounded",
@@ -247,14 +247,6 @@ if __name__ == "__main__":
             grid_scheduler.step()
 
             mse_loss = F.mse_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
-            # if step % 5000 == 0:
-            #     elapsed_time = time.time() - tic
-            #     print(
-            #         f"elapsed_time={elapsed_time:.2f}s | step={step} | "
-            #         f"loss={loss:.5f} | "
-            #         f"alive_ray_mask={alive_ray_mask.long().sum():d} | "
-            #         f"n_rendering_samples={n_rendering_samples:d} | num_rays={len(pixels):d} |"
-            #     )
             global_it.set_description(
                 f"loss={loss:.5f} | " + 
                 f"alive_ray_mask={alive_ray_mask.long().sum():05d} | " + 

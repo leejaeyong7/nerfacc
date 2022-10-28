@@ -218,13 +218,14 @@ class FreqNeRFRadianceField(nn.Module):
         net_width_condition: int = 128,  # The width of the second part of MLP.
         log2_res_pos: int = 7,  # The width of the second part of MLP.
         log2_res_view: int = 4,  # The width of the second part of MLP.
-        num_pos_f: int = 4,  # The width of the second part of MLP.
+        num_pos_f: int = 8,  # The width of the second part of MLP.
         num_view_f: int = 4,  # The width of the second part of MLP.
     ) -> None:
         super().__init__()
-        res_pos = 4
+        # self.posi_encoder = MultiFreqEncoder(3, 0, 10, res_pos, num_pos_f, True)
+        self.posi_encoder = FreqHash(3, 0, 10, log2_res_pos, num_pos_f, use_identity=True)
         # self.posi_encoder = MultiFreqEncoder2D(3, 0, 10, res_pos, num_pos_f, True)
-        self.posi_encoder = MultiFreqEncoder2D(3, 0, 6, res_pos, num_pos_f, True)
+        # self.posi_encoder = MultiFreqEncoder2D(3, 0, 6, res_pos, num_pos_f, True)
         # self.view_encoder = FreqEncoder(3, 0, 4, log2_res_view, num_view_f, True)
         # self.posi_encoder = FreqEncoder(3, 0, 10, log2_res_pos, num_pos_f, True)
         # self.view_encoder = FreqEncoder(3, 0, 4, log2_res_view, num_view_f, True)
