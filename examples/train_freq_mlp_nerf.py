@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from radiance_fields.mlp import VanillaNeRFRadianceField, FreqNeRFRadianceField
+from pathlib import Path
 from utils import render_image, set_random_seed
 
 from tensorboardX import SummaryWriter
@@ -79,6 +80,12 @@ if __name__ == "__main__":
         default='logs'
     )
     parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        help="Path to dataset",
+        default='checkpoints'
+    )
+    parser.add_argument(
         "--run_name",
         type=str,
     )
@@ -87,6 +94,7 @@ if __name__ == "__main__":
 
     # logger = SummaryWriter(comment=args.log_path+"/" +args.run_name)
     logger = SummaryWriter(logdir=args.log_path + "/" + args.run_name)
+    checkpoint_path = Path(args.checkpoint_path)
 
     render_n_samples = 1024
 
@@ -117,7 +125,7 @@ if __name__ == "__main__":
     radiance_field = FreqNeRFRadianceField().to(device)
     optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=5e-3)
-    # grid_optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
+    # grid_optimizer = torch.optim.Adam(radiance_field.posi_encoder.parameters(), lr=5e-4)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
         milestones=[
@@ -260,7 +268,8 @@ if __name__ == "__main__":
 
                 psnrs = []
                 with torch.no_grad():
-
+                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.scene}_freq_model.pth')
+                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.scene}_freq_grid.pth')
                     for i in tqdm(range(len(test_dataset)), leave=False):
                         data = test_dataset[i]
                         render_bkgd = data["color_bkgd"]

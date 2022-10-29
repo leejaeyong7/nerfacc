@@ -12,9 +12,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from radiance_fields.mlp import VanillaNeRFRadianceField, FreqNeRFRadianceField
+from radiance_fields.mlp import *
 from utils import render_image, set_random_seed
-from pathlib import Path
 
 from tensorboardX import SummaryWriter
 
@@ -61,7 +60,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test_chunk_size",
         type=int,
-        default=8192,
+        default=4096,
     )
     parser.add_argument(
         "--unbounded",
@@ -80,12 +79,6 @@ if __name__ == "__main__":
         default='logs'
     )
     parser.add_argument(
-        "--checkpoint_path",
-        type=str,
-        help="Path to dataset",
-        default='checkpoints'
-    )
-    parser.add_argument(
         "--run_name",
         type=str,
     )
@@ -94,7 +87,6 @@ if __name__ == "__main__":
 
     # logger = SummaryWriter(comment=args.log_path+"/" +args.run_name)
     logger = SummaryWriter(logdir=args.log_path + "/" + args.run_name)
-    checkpoint_path = Path(args.checkpoint_path)
 
     render_n_samples = 1024
 
@@ -121,12 +113,21 @@ if __name__ == "__main__":
     # setup the radiance field we want to train.
     max_steps = 50000
     grad_scaler = torch.cuda.amp.GradScaler(1)
-    radiance_field = VanillaNeRFRadianceField().to(device)
-    # radiance_field = FreqNeRFRadianceField().to(device)
-    optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
-    # grid_optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
+    radiance_field = MultiFreqNeRFRadianceField().to(device)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
+    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=5e-3)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
+        milestones=[
+            max_steps // 2,
+            max_steps * 3 // 4,
+            max_steps * 5 // 6,
+            max_steps * 9 // 10,
+        ],
+        gamma=0.33,
+    )
+    grid_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        grid_optimizer,
         milestones=[
             max_steps // 2,
             max_steps * 3 // 4,
@@ -235,20 +236,15 @@ if __name__ == "__main__":
             loss = F.smooth_l1_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
 
             optimizer.zero_grad()
+            grid_optimizer.zero_grad()
             # do not unscale it because we are using Adam.
             grad_scaler.scale(loss).backward()
             optimizer.step()
             scheduler.step()
+            grid_optimizer.step()
+            grid_scheduler.step()
 
             mse_loss = F.mse_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
-            # if step % 5000 == 0:
-            #     elapsed_time = time.time() - tic
-            #     print(
-            #         f"elapsed_time={elapsed_time:.2f}s | step={step} | "
-            #         f"loss={loss:.5f} | "
-            #         f"alive_ray_mask={alive_ray_mask.long().sum():d} | "
-            #         f"n_rendering_samples={n_rendering_samples:d} | num_rays={len(pixels):d} |"
-            #     )
             global_it.set_description(
                 f"loss={loss:.5f} | " + 
                 f"alive_ray_mask={alive_ray_mask.long().sum():05d} | " + 
@@ -262,9 +258,6 @@ if __name__ == "__main__":
 
                 psnrs = []
                 with torch.no_grad():
-                    # save to checkpoint
-                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.scene}_van_model.pth')
-                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.scene}_van_grid.pth')
 
                     for i in tqdm(range(len(test_dataset)), leave=False):
                         data = test_dataset[i]
