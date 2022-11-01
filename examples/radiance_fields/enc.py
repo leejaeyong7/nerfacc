@@ -43,16 +43,18 @@ class SinusoidalEncoder(nn.Module):
 class FreqEncoder(nn.Module):
     """Sinusoidal Positional Encoder used in Nerf."""
 
-    def __init__(self, x_dim, min_deg, max_deg, log2_res=7, num_feats=8, std=0.001, use_identity: bool = True):
+    def __init__(self, x_dim, min_deg, max_deg, num_freqs, log2_res=7, num_feats=8, std=0.001, use_identity: bool = True):
         super().__init__()
         self.x_dim = x_dim
         self.min_deg = min_deg
         self.max_deg = max_deg
         self.num_feats = num_feats
         self.use_identity = use_identity
+        self.num_freqs = num_freqs
 
-        # scales = 2.0 ** torch.linspace(min_deg, max_deg, max_deg - min_deg)
-        scales = torch.tensor([2**i for i in range(min_deg, max_deg)])
+        # scales = 2.0 ** torch.linspace(min_deg, max_deg, num_freqs)
+        scales = torch.linspace(2.0 ** min_deg, 2.0 ** max_deg, num_freqs)
+        # scales = torch.tensor([2**i for i in range(min_deg, max_deg)])
         #  "scales", torch.linspace(2.0 ** min_deg, 2.0**max_deg, max_deg - min_deg)
         self.register_buffer(
              "scales", scales
@@ -65,7 +67,7 @@ class FreqEncoder(nn.Module):
     @property
     def latent_dim(self) -> int:
         return (
-            int(self.use_identity) + (self.max_deg - self.min_deg) * 2 * self.num_feats
+            int(self.use_identity) + (self.num_freqs) * 2 * self.num_feats
         ) * self.x_dim
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -80,7 +82,8 @@ class FreqEncoder(nn.Module):
         if any([s == 0 for s in x.shape]):
             return torch.zeros((0, self.latent_dim)).to(x)
         # Nx1x3 * Fx1 => NxFx3 => NxF3
-        num_scales = (self.max_deg - self.min_deg)
+        # num_scales = (self.max_deg - self.min_deg)
+        num_scales = self.num_freqs
         num_feats = num_scales * self.x_dim * 2
         num_channels = self.features.shape[1]
 
@@ -171,18 +174,18 @@ class MultiFreqEncoder(nn.Module):
 
 
 class FreqHash(nn.Module):
-    def __init__(self, x_dim, min_deg=0, max_deg=6, log2_res=8, num_feats=8, std=0.1, use_identity=True):
+    def __init__(self, x_dim, min_deg=0, max_deg=5, num_freqs=6, log2_res=8, num_feats=8, std=0.1, use_identity=True):
         super().__init__()
         self.x_dim = x_dim
         self.use_identity = use_identity
         self.max_deg = max_deg
         self.min_deg = min_deg
-        num_freqs = max_deg - min_deg
+        # num_freqs = max_deg - min_deg
         self.num_freqs = num_freqs
         self.num_feats = num_feats
 
-        freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
-        # freqs = 2.0 ** torch.linspace(min_deg, max_deg, num_freqs)
+        # freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
+        freqs = 2.0 ** torch.linspace(min_deg, max_deg, num_freqs)
 
         self.freqs = nn.Parameter(freqs, False)
         res = 2 ** log2_res
@@ -192,7 +195,7 @@ class FreqHash(nn.Module):
     @property
     def latent_dim(self) -> int:
         return (
-            int(self.use_identity) + (self.max_deg - self.min_deg) * 2 * self.num_feats
+            int(self.use_identity) + (self.num_freqs) * 2 * self.num_feats
         ) * self.x_dim
 
     def pos_encode(self, points):
