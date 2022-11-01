@@ -245,8 +245,8 @@ class FreqVMEncoder(nn.Module):
         self.num_feats = num_feats
 
         # freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
-        # freqs = 2.0 ** torch.linspace(min_log2_freq, max_log2_freq, num_freqs)
-        freqs = torch.linspace(2.0 ** min_log2_freq, 2.0 ** max_log2_freq, num_freqs)
+        freqs = 2.0 ** torch.linspace(min_log2_freq, max_log2_freq, num_freqs)
+        # freqs = torch.linspace(2.0 ** min_log2_freq, 2.0 ** max_log2_freq, num_freqs)
         self.freqs = nn.Parameter(freqs, False)
 
         res = 2 ** log2_res

@@ -209,12 +209,24 @@ if __name__ == "__main__":
             rays = data["rays"]
             pixels = data["pixels"]
 
-            # update occupancy grid
+            def query_opacity(x):
+                chunk_size = 1024 * 1024
+                n = x.shape[0]
+                with torch.no_grad():
+                    opacities = []
+                    for s in range(0, n, chunk_size):
+                        _x = x[s:s+chunk_size]
+                        opacities.append(
+                            radiance_field.query_opacity(_x, render_step_size)
+                        )
+                    return torch.cat(opacities)
+
             occupancy_grid.every_n_step(
                 step=step,
-                occ_eval_fn=lambda x: radiance_field.query_opacity(
-                    x, render_step_size
-                ),
+                occ_eval_fn=query_opacity
+                # occ_eval_fn=lambda x: radiance_field.query_opacity(
+                #     x, render_step_size
+                # )
             )
 
             # render
