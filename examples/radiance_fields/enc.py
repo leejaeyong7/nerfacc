@@ -233,18 +233,20 @@ class FreqHash(nn.Module):
         return features
 
 class FreqVMEncoder(nn.Module):
-    def __init__(self, x_dim, min_deg, max_deg, log2_res=7, num_feats=8, std=0.001, use_identity: bool = True):
+    def __init__(self, x_dim, min_deg, max_deg, num_freqs=6, log2_res=7, num_feats=8, std=0.001, use_identity: bool = True):
         super().__init__()
         self.x_dim = x_dim
         min_log2_freq = min_deg
         max_log2_freq = max_deg
-        num_freqs = max_deg - min_deg
+        self.num_freqs = num_freqs
+
         self.num_freqs = num_freqs
         self.use_identity = use_identity
         self.num_feats = num_feats
 
-        freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
+        # freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
         # freqs = 2.0 ** torch.linspace(min_log2_freq, max_log2_freq, num_freqs)
+        freqs = torch.linspace(2.0 ** min_log2_freq, 2.0 ** max_log2_freq, num_freqs)
         self.freqs = nn.Parameter(freqs, False)
 
         res = 2 ** log2_res

@@ -16,6 +16,7 @@ from radiance_fields.mlp import *
 from utils import render_image, set_random_seed
 
 from tensorboardX import SummaryWriter
+from pathlib import Path
 
 from nerfacc import ContractionType, OccupancyGrid
 
@@ -82,11 +83,18 @@ if __name__ == "__main__":
         "--run_name",
         type=str,
     )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        help="Path to dataset",
+        default='checkpoints'
+    )
     parser.add_argument("--cone_angle", type=float, default=0.0)
     args = parser.parse_args()
 
     # logger = SummaryWriter(comment=args.log_path+"/" +args.run_name)
     logger = SummaryWriter(logdir=args.log_path + "/" + args.run_name)
+    checkpoint_path = Path(args.checkpoint_path)
 
     render_n_samples = 1024
 
@@ -115,7 +123,7 @@ if __name__ == "__main__":
     grad_scaler = torch.cuda.amp.GradScaler(1)
     radiance_field = FreqVMNeRFRadianceField().to(device)
     optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
-    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=5e-3)
+    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
         milestones=[
@@ -258,6 +266,8 @@ if __name__ == "__main__":
 
                 psnrs = []
                 with torch.no_grad():
+                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_model.pth')
+                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_grid.pth')
 
                     for i in tqdm(range(len(test_dataset)), leave=False):
                         data = test_dataset[i]
