@@ -60,6 +60,16 @@ def render_image(
                 else timestamps.expand_as(positions[:, :1])
             )
             return radiance_field.query_density(positions, t)
+        # check the points for query
+        chunk_size = 1024 * 1024
+        densities = []
+        n = positions.shape[0]
+        for s in range(0, n, chunk_size):
+            _x = positions[s:s+chunk_size]
+            densities.append(
+                radiance_field.query_density(_x)
+            )
+        return torch.cat(densities)
         return radiance_field.query_density(positions)
 
     def rgb_sigma_fn(t_starts, t_ends, ray_indices):
@@ -75,6 +85,15 @@ def render_image(
                 else timestamps.expand_as(positions[:, :1])
             )
             return radiance_field(positions, t, t_dirs)
+        chunk_size = 1024 * 1024
+        densities = []
+        n = positions.shape[0]
+        for s in range(0, n, chunk_size):
+            _x = positions[s:s+chunk_size]
+            densities.append(
+                radiance_field.query_density(_x)
+            )
+        return torch.cat(densities)
         return radiance_field(positions, t_dirs)
 
     results = []
