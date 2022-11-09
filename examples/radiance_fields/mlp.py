@@ -264,7 +264,6 @@ class FreqVMNeRFRadianceField(nn.Module):
         num_pos_f: int = 16,  # The width of the second part of MLP.
     ) -> None:
         super().__init__()
-        # self.posi_encoder = FreqVMEncoder(3, 0, 10, log2_res, num_pos_f, use_identity=True)
         self.posi_encoder = FreqVMEncoder(3, 0, 5, 6, log2_res, num_pos_f, use_identity=True)
 
         self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
@@ -310,10 +309,8 @@ class FreqNeRFRadianceField(nn.Module):
         num_pos_f: int = 16,  
     ) -> None:
         super().__init__()
-        # self.posi_encoder = FreqEncoder(3, 0, 10, log2_res_pos, num_pos_f, use_identity=True)
         self.posi_encoder = FreqHash(3, 0, 5, 6, log2_res_pos, num_pos_f, use_identity=True)
         self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
-        # self.view_encoder = FreqEncoder(3, 0, 4, log2_res_view, num_view_f, use_identity=True)
 
         self.mlp = NerfMLP(
             input_dim=self.posi_encoder.latent_dim,

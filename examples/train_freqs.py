@@ -89,6 +89,13 @@ if __name__ == "__main__":
         help="Path to dataset",
         default='checkpoints'
     )
+
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        choices=['1d', '2d']
+        help="Path to dataset",
+    )
     parser.add_argument("--cone_angle", type=float, default=0.0)
     args = parser.parse_args()
 
@@ -121,8 +128,12 @@ if __name__ == "__main__":
     # setup the radiance field we want to train.
     max_steps = 50000
     grad_scaler = torch.cuda.amp.GradScaler(1)
-    radiance_field = FreqVMNeRFRadianceField().to(device)
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=1e-3, eps=1e-15)
+    if args.model_type == '1d':
+        radiance_field = FreqNeRFRadianceField().to(device)
+    else:
+        radiance_field = FreqVMNeRFRadianceField().to(device)
+
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4, eps=1e-15)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
