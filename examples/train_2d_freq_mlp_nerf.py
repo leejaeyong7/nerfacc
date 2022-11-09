@@ -122,7 +122,7 @@ if __name__ == "__main__":
     max_steps = 50000
     grad_scaler = torch.cuda.amp.GradScaler(1)
     radiance_field = FreqVMNeRFRadianceField().to(device)
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=1e-3, eps=1e-15)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
@@ -196,6 +196,7 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
+    val_steps = 5000
     for epoch in range(1000000):
         num_train_samples = len(train_dataset)
         # train_it = tqdm(range(num_train_samples), total=num_train_samples, dynamic_ncols=True, leave=False)
@@ -273,15 +274,49 @@ if __name__ == "__main__":
             )
             logger.add_scalar('train/loss', loss, step)
 
-            if step >= 0 and step % max_steps == 0 and step > 0:
+            if step >= 0 and step % val_steps == 0 and step > 0:
+                torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_model_step_{step}.pth')
+                torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_grid_step_{step}.pth')
+            # if step >= 0 and step % val_steps == 0 and step > 0:
+            #     # evaluation
+            #     radiance_field.eval()
+
+            #     psnrs = []
+            #     with torch.no_grad():
+            #         data = test_dataset[0]
+            #         render_bkgd = data["color_bkgd"]
+            #         rays = data["rays"]
+            #         pixels = data["pixels"]
+
+            #         # rendering
+            #         rgb, acc, depth, _ = render_image(
+            #             radiance_field,
+            #             occupancy_grid,
+            #             rays,
+            #             scene_aabb,
+            #             # rendering options
+            #             near_plane=None,
+            #             far_plane=None,
+            #             render_step_size=render_step_size,
+            #             render_bkgd=render_bkgd,
+            #             cone_angle=args.cone_angle,
+            #             # test options
+            #             test_chunk_size=args.test_chunk_size,
+            #         )
+            #         mse = F.mse_loss(rgb, pixels)
+            #         psnr = -10.0 * torch.log(mse) / np.log(10.0)
+            #         psnrs.append(psnr.item())
+            #     psnr_avg = sum(psnrs) / len(psnrs)
+            #     train_dataset.training = True
+            #     logger.add_scalar('eval/psnr', psnr_avg, step)
+            #     logger.add_image('eval/image', rgb, step, dataformats='HWC')
+
+            if step >= 0 and step % val_steps == 0 and step > 0:
                 # evaluation
                 radiance_field.eval()
 
                 psnrs = []
                 with torch.no_grad():
-                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_model.pth')
-                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_grid.pth')
-
                     for i in tqdm(range(len(test_dataset)), leave=False):
                         data = test_dataset[i]
                         render_bkgd = data["color_bkgd"]
@@ -306,19 +341,11 @@ if __name__ == "__main__":
                         mse = F.mse_loss(rgb, pixels)
                         psnr = -10.0 * torch.log(mse) / np.log(10.0)
                         psnrs.append(psnr.item())
-                        # imageio.imwrite(
-                        #     "acc_binary_test.png",
-                        #     ((acc > 0).float().cpu().numpy() * 255).astype(np.uint8),
-                        # )
-                        # imageio.imwrite(
-                        #     "rgb_test.png",
-                        #     (rgb.cpu().numpy() * 255).astype(np.uint8),
-                        # )
-                        # break
+
                 psnr_avg = sum(psnrs) / len(psnrs)
-                print(f"evaluation: psnr_avg={psnr_avg}")
-                train_dataset.training = True
                 logger.add_scalar('eval/psnr', psnr_avg, step)
+                logger.add_image('eval/image', rgb, step, dataformats='HWC')
+
             global_it.update(1)
 
             if step == max_steps:
