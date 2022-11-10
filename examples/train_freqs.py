@@ -155,7 +155,7 @@ if __name__ == "__main__":
                                                num_pos_f=args.num_f).to(device)
     else:
         radiance_field = FreqVMNeRFRadianceField(net_depth=args.net_depth, 
-                                                 log2_res_pos=args.log2_res, 
+                                                 log2_res=args.log2_res, 
                                                  num_pos_f=args.num_f).to(device)
 
     optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    val_steps = [15000, 30000, 50000]
+    val_steps = [50000]
 
     output_folder = Path(args.output_path)
 
