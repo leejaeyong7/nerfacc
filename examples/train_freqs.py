@@ -89,6 +89,27 @@ if __name__ == "__main__":
         help="Path to dataset",
         default='checkpoints'
     )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        help="Path to writing outputs",
+        default='outputs'
+    )
+    parser.add_argument(
+        "--log2_res",
+        type=int,
+        default=7
+    )
+    parser.add_argument(
+        "--num_f",
+        type=int,
+        default=16
+    )
+    parser.add_argument(
+        "--net_depth",
+        type=int,
+        default=8
+    )
 
     parser.add_argument(
         "--model_type",
@@ -129,9 +150,13 @@ if __name__ == "__main__":
     max_steps = 50000
     grad_scaler = torch.cuda.amp.GradScaler(1)
     if args.model_type == '1d':
-        radiance_field = FreqNeRFRadianceField().to(device)
+        radiance_field = FreqNeRFRadianceField(net_depth=args.net_depth, 
+                                               log2_res_pos=args.log2_res, 
+                                               num_pos_f=args.num_f).to(device)
     else:
-        radiance_field = FreqVMNeRFRadianceField().to(device)
+        radiance_field = FreqVMNeRFRadianceField(net_depth=args.net_depth, 
+                                                 log2_res_pos=args.log2_res, 
+                                                 num_pos_f=args.num_f).to(device)
 
     optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
@@ -207,7 +232,10 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    val_steps = 15000
+    val_steps = [15000, 30000, 50000]
+
+    output_folder = Path(args.output_path)
+
     for epoch in range(1000000):
         num_train_samples = len(train_dataset)
         # train_it = tqdm(range(num_train_samples), total=num_train_samples, dynamic_ncols=True, leave=False)
@@ -285,9 +313,9 @@ if __name__ == "__main__":
             )
             logger.add_scalar('train/loss', loss, step)
 
-            if (step >= 0 and (step % val_steps == 0) and step > 0) or (step == max_steps):
-                torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_model_step_{step}.pth')
-                torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_grid_step_{step}.pth')
+            if (step in val_steps) or (step == max_steps):
+                torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.run_name}_model_step_{step}.pth')
+                torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.run_name}_grid_step_{step}.pth')
 
                 # evaluation
                 radiance_field.eval()
@@ -318,6 +346,20 @@ if __name__ == "__main__":
                         mse = F.mse_loss(rgb, pixels)
                         psnr = -10.0 * torch.log(mse) / np.log(10.0)
                         psnrs.append(psnr.item())
+
+                        (output_folder / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
+                        (output_folder / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
+                        output_image = output_folder / f'steps_{step}' / 'images' / f'{step:06d}.png'
+                        output_depth = output_folder / f'steps_{step}' / 'depths' / f'{step:06d}.png'
+
+                        imageio.imwrite(
+                            output_depth,
+                            ((depth / depth.max()).cpu().numpy() * 255).astype(np.uint8)
+                        )
+                        imageio.imwrite(
+                            output_image,
+                            (rgb.cpu().numpy() * 255).astype(np.uint8),
+                        )
 
                 psnr_avg = sum(psnrs) / len(psnrs)
                 logger.add_scalar('eval/psnr_all', psnr_avg, step)

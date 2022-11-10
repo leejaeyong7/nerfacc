@@ -89,6 +89,12 @@ if __name__ == "__main__":
         "--run_name",
         type=str,
     )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        help="Path to dataset",
+        default='outputs'
+    )
     parser.add_argument("--cone_angle", type=float, default=0.0)
     args = parser.parse_args()
 
@@ -120,11 +126,14 @@ if __name__ == "__main__":
 
     # setup the radiance field we want to train.
     max_steps = 50000
+    val_steps = list(range(0, max_steps, 5000))[1:]
+
+    output_folder = Path(args.output_path)
+
     grad_scaler = torch.cuda.amp.GradScaler(1)
     radiance_field = VanillaNeRFRadianceField().to(device)
-    # radiance_field = FreqNeRFRadianceField().to(device)
     optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
-    # grid_optimizer = torch.optim.Adam(radiance_field.parameters(), lr=5e-4)
+
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
         milestones=[
@@ -241,14 +250,6 @@ if __name__ == "__main__":
             scheduler.step()
 
             mse_loss = F.mse_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
-            # if step % 5000 == 0:
-            #     elapsed_time = time.time() - tic
-            #     print(
-            #         f"elapsed_time={elapsed_time:.2f}s | step={step} | "
-            #         f"loss={loss:.5f} | "
-            #         f"alive_ray_mask={alive_ray_mask.long().sum():d} | "
-            #         f"n_rendering_samples={n_rendering_samples:d} | num_rays={len(pixels):d} |"
-            #     )
             global_it.set_description(
                 f"loss={loss:.5f} | " + 
                 f"alive_ray_mask={alive_ray_mask.long().sum():05d} | " + 
@@ -256,15 +257,15 @@ if __name__ == "__main__":
             )
             logger.add_scalar('train/loss', loss, step)
 
-            if step >= 0 and step % max_steps == 0 and step > 0:
+            if (step in val_steps) or (step == max_steps):
                 # evaluation
                 radiance_field.eval()
 
                 psnrs = []
                 with torch.no_grad():
                     # save to checkpoint
-                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.scene}_van_model.pth')
-                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.scene}_van_grid.pth')
+                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.scene}_step_{step}_van_model.pth')
+                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.scene}_step_{step}_van_grid.pth')
 
                     for i in tqdm(range(len(test_dataset)), leave=False):
                         data = test_dataset[i]
@@ -290,19 +291,24 @@ if __name__ == "__main__":
                         mse = F.mse_loss(rgb, pixels)
                         psnr = -10.0 * torch.log(mse) / np.log(10.0)
                         psnrs.append(psnr.item())
-                        # imageio.imwrite(
-                        #     "acc_binary_test.png",
-                        #     ((acc > 0).float().cpu().numpy() * 255).astype(np.uint8),
-                        # )
-                        # imageio.imwrite(
-                        #     "rgb_test.png",
-                        #     (rgb.cpu().numpy() * 255).astype(np.uint8),
-                        # )
+
+                        (output_folder / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
+                        (output_folder / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
+                        output_image = output_folder / f'steps_{step}' / 'images' / f'{step:06d}.png'
+                        output_depth = output_folder / f'steps_{step}' / 'depths' / f'{step:06d}.png'
+
+                        imageio.imwrite(
+                            output_depth,
+                            ((depth / depth.max()).cpu().numpy() * 255).astype(np.uint8)
+                        )
+                        imageio.imwrite(
+                            output_image,
+                            (rgb.cpu().numpy() * 255).astype(np.uint8),
+                        )
                         # break
                 psnr_avg = sum(psnrs) / len(psnrs)
-                print(f"evaluation: psnr_avg={psnr_avg}")
                 train_dataset.training = True
-                logger.add_scalar('eval/psnr', psnr_avg, step)
+                logger.add_scalar('eval/psnr_test', psnr_avg, step)
             global_it.update(1)
 
             if step == max_steps:
