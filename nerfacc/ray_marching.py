@@ -7,7 +7,6 @@ import nerfacc.cuda as _C
 from .contraction import ContractionType
 from .grid import Grid
 from .intersection import ray_aabb_intersect
-from .pack import unpack_info
 from .vol_rendering import render_visibility
 
 
@@ -22,8 +21,9 @@ def ray_marching(
     scene_aabb: Optional[torch.Tensor] = None,
     # binarized grid for skipping empty space
     grid: Optional[Grid] = None,
-    # sigma function for skipping invisible space
+    # sigma/alpha function for skipping invisible space
     sigma_fn: Optional[Callable] = None,
+    alpha_fn: Optional[Callable] = None,
     early_stop_eps: float = 1e-4,
     alpha_thre: float = 0.0,
     # rendering options
@@ -61,6 +61,12 @@ def ray_marching(
             by evaluating the density along the ray with `sigma_fn`. It should be a 
             function that takes in samples {t_starts (N, 1), t_ends (N, 1),
             ray indices (N,)} and returns the post-activation density values (N, 1).
+            You should only provide either `sigma_fn` or `alpha_fn`.
+        alpha_fn: Optional. If provided, the marching will skip the invisible space
+            by evaluating the density along the ray with `alpha_fn`. It should be a
+            function that takes in samples {t_starts (N, 1), t_ends (N, 1),
+            ray indices (N,)} and returns the post-activation opacity values (N, 1).
+            You should only provide either `sigma_fn` or `alpha_fn`.
         early_stop_eps: Early stop threshold for skipping invisible space. Default: 1e-4.
         alpha_thre: Alpha threshold for skipping empty space. Default: 0.0.
         near_plane: Optional. Near plane distance. If provided, it will be used
@@ -75,10 +81,7 @@ def ray_marching(
     Returns:
         A tuple of tensors.
 
-            - **packed_info**: Stores information on which samples belong to the same ray. \
-                Tensor with shape (n_rays, 2). The first column stores the index of the \
-                first sample of each ray. The second column stores the number of samples \
-                of each ray.
+            - **ray_indices**: Ray index of each sample. IntTensor with shape (n_samples).
             - **t_starts**: Per-sample start distance. Tensor with shape (n_samples, 1).
             - **t_ends**: Per-sample end distance. Tensor with shape (n_samples, 1).
 
@@ -96,38 +99,41 @@ def ray_marching(
         rays_d = rays_d / rays_d.norm(dim=-1, keepdim=True)
 
         # Ray marching with near far plane.
-        packed_info, t_starts, t_ends = ray_marching(
+        ray_indices, t_starts, t_ends = ray_marching(
             rays_o, rays_d, near_plane=0.1, far_plane=1.0, render_step_size=1e-3
         )
 
         # Ray marching with aabb.
         scene_aabb = torch.tensor([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], device=device)
-        packed_info, t_starts, t_ends = ray_marching(
+        ray_indices, t_starts, t_ends = ray_marching(
             rays_o, rays_d, scene_aabb=scene_aabb, render_step_size=1e-3
         )
 
         # Ray marching with per-ray t_min and t_max.
         t_min = torch.zeros((batch_size,), device=device)
         t_max = torch.ones((batch_size,), device=device)
-        packed_info, t_starts, t_ends = ray_marching(
+        ray_indices, t_starts, t_ends = ray_marching(
             rays_o, rays_d, t_min=t_min, t_max=t_max, render_step_size=1e-3
         )
 
         # Ray marching with aabb and skip areas based on occupancy grid.
         scene_aabb = torch.tensor([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], device=device)
         grid = OccupancyGrid(roi_aabb=[0.0, 0.0, 0.0, 0.5, 0.5, 0.5]).to(device)
-        packed_info, t_starts, t_ends = ray_marching(
+        ray_indices, t_starts, t_ends = ray_marching(
             rays_o, rays_d, scene_aabb=scene_aabb, grid=grid, render_step_size=1e-3
         )
 
         # Convert t_starts and t_ends to sample locations.
-        ray_indices = unpack_info(packed_info)
         t_mid = (t_starts + t_ends) / 2.0
         sample_locs = rays_o[ray_indices] + t_mid * rays_d[ray_indices]
 
     """
     if not rays_o.is_cuda:
         raise NotImplementedError("Only support cuda inputs.")
+    if alpha_fn is not None and sigma_fn is not None:
+        raise ValueError(
+            "Only one of `alpha_fn` and `sigma_fn` should be provided."
+        )
 
     # logic for t_min and t_max:
     # 1. if t_min and t_max are given, use them with highest priority.
@@ -168,7 +174,7 @@ def ray_marching(
         contraction_type = ContractionType.AABB.to_cpp_version()
 
     # marching with grid-based skipping
-    packed_info, t_starts, t_ends = _C.ray_marching(
+    packed_info, ray_indices, t_starts, t_ends = _C.ray_marching(
         # rays
         rays_o.contiguous(),
         rays_d.contiguous(),
@@ -184,20 +190,32 @@ def ray_marching(
     )
 
     # skip invisible space
-    if sigma_fn is not None:
+    if sigma_fn is not None or alpha_fn is not None:
         # Query sigma without gradients
-        ray_indices = unpack_info(packed_info)
-        sigmas = sigma_fn(t_starts, t_ends, ray_indices.long())
-        assert (
-            sigmas.shape == t_starts.shape
-        ), "sigmas must have shape of (N, 1)! Got {}".format(sigmas.shape)
-        alphas = 1.0 - torch.exp(-sigmas * (t_ends - t_starts))
+        if sigma_fn is not None:
+            sigmas = sigma_fn(t_starts, t_ends, ray_indices.long())
+            assert (
+                sigmas.shape == t_starts.shape
+            ), "sigmas must have shape of (N, 1)! Got {}".format(sigmas.shape)
+            alphas = 1.0 - torch.exp(-sigmas * (t_ends - t_starts))
+        elif alpha_fn is not None:
+            alphas = alpha_fn(t_starts, t_ends, ray_indices.long())
+            assert (
+                alphas.shape == t_starts.shape
+            ), "alphas must have shape of (N, 1)! Got {}".format(alphas.shape)
 
         # Compute visibility of the samples, and filter out invisible samples
-        visibility, packed_info_visible = render_visibility(
-            packed_info, alphas, early_stop_eps, alpha_thre
+        masks = render_visibility(
+            alphas,
+            ray_indices=ray_indices,
+            early_stop_eps=early_stop_eps,
+            alpha_thre=alpha_thre,
+            n_rays=rays_o.shape[0],
         )
-        t_starts, t_ends = t_starts[visibility], t_ends[visibility]
-        packed_info = packed_info_visible
+        ray_indices, t_starts, t_ends = (
+            ray_indices[masks],
+            t_starts[masks],
+            t_ends[masks],
+        )
 
-    return packed_info, t_starts, t_ends
+    return ray_indices, t_starts, t_ends

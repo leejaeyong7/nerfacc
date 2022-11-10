@@ -1,4 +1,15 @@
-# NerfAcc
+<p>
+  <!-- pypi-strip -->
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/3310961/199083722-881a2372-62c1-4255-8521-31a95a721851.png" />
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/3310961/199084143-0d63eb40-3f35-48d2-a9d5-78d1d60b7d66.png" />
+  <!-- /pypi-strip -->
+  <img alt="nerfacc logo" src="https://user-images.githubusercontent.com/3310961/199084143-0d63eb40-3f35-48d2-a9d5-78d1d60b7d66.png" width="350px" />
+  <!-- pypi-strip -->
+  </picture>
+  <!-- /pypi-strip -->
+</p>
+
 [![Core Tests.](https://github.com/KAIR-BAIR/nerfacc/actions/workflows/code_checks.yml/badge.svg)](https://github.com/KAIR-BAIR/nerfacc/actions/workflows/code_checks.yml)
 [![Documentation Status](https://readthedocs.com/projects/plenoptix-nerfacc/badge/?version=latest)](https://www.nerfacc.com/en/latest/?badge=latest)
 [![Downloads](https://pepy.tech/badge/nerfacc)](https://pepy.tech/project/nerfacc)
@@ -76,16 +87,18 @@ def rgb_sigma_fn(
     return rgbs, sigmas  # (n_samples, 3), (n_samples, 1)
 
 # Efficient Raymarching: Skip empty and occluded space, pack samples from all rays.
-# packed_info: (n_rays, 2). t_starts: (n_samples, 1). t_ends: (n_samples, 1).
+# ray_indices: (n_samples,). t_starts: (n_samples, 1). t_ends: (n_samples, 1).
 with torch.no_grad():
-    packed_info, t_starts, t_ends = nerfacc.ray_marching(
+    ray_indices, t_starts, t_ends = nerfacc.ray_marching(
         rays_o, rays_d, sigma_fn=sigma_fn, near_plane=0.2, far_plane=1.0, 
         early_stop_eps=1e-4, alpha_thre=1e-2, 
     )
 
 # Differentiable Volumetric Rendering.
 # colors: (n_rays, 3). opaicity: (n_rays, 1). depth: (n_rays, 1).
-color, opacity, depth = nerfacc.rendering(rgb_sigma_fn, packed_info, t_starts, t_ends)
+color, opacity, depth = nerfacc.rendering(
+    t_starts, t_ends, ray_indices, n_rays=rays_o.shape[0], rgb_sigma_fn=rgb_sigma_fn
+)
 
 # Optimize: Both the network and rays will receive gradients
 optimizer.zero_grad()
@@ -98,6 +111,11 @@ optimizer.step()
 
 Before running those example scripts, please check the script about which dataset it is needed, and download
 the dataset first.
+
+```bash
+# clone the repo with submodules.
+git clone --recursive git://github.com/KAIR-BAIR/nerfacc/
+```
 
 ``` bash
 # Instant-NGP NeRF in 4.5 minutes with reproduced performance!
@@ -122,6 +140,10 @@ python examples/train_mlp_dnerf.py --train_split train --scene lego
 # See results at here: https://www.nerfacc.com/en/latest/examples/unbounded.html
 python examples/train_ngp_nerf.py --train_split train --scene garden --auto_aabb --unbounded --cone_angle=0.004
 ```
+
+Used by:
+- [nerfstudio](https://github.com/nerfstudio-project/nerfstudio): A collaboration friendly studio for NeRFs.
+- [instant-nsr-pl](https://github.com/bennyguo/instant-nsr-pl): NeuS in 10 minutes.
 
 
 ## Citation
