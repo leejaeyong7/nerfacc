@@ -159,7 +159,7 @@ if __name__ == "__main__":
                                                  log2_res=args.log2_res, 
                                                  num_pos_f=args.num_f).to(device)
 
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=4e-4)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=1e-4)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
@@ -348,23 +348,24 @@ if __name__ == "__main__":
                         psnr = -10.0 * torch.log(mse) / np.log(10.0)
                         psnrs.append(psnr.item())
 
-                        (output_folder / args.run_name / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
-                        (output_folder / args.run_name / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
-                        output_image = output_folder / args.run_name / f'steps_{step}' / 'images' / f'{i:06d}.png'
-                        output_depth = output_folder / args.run_name / f'steps_{step}' / 'depths' / f'{i:06d}.png'
+                        # (output_folder / args.run_name / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
+                        # (output_folder / args.run_name / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
+                        # output_image = output_folder / args.run_name / f'steps_{step}' / 'images' / f'{i:06d}.png'
+                        # output_depth = output_folder / args.run_name / f'steps_{step}' / 'depths' / f'{i:06d}.png'
 
-                        imageio.imwrite(
-                            output_depth,
-                            ((depth / depth.max()).cpu().numpy() * 255).astype(np.uint8)
-                        )
-                        imageio.imwrite(
-                            output_image,
-                            (rgb.cpu().numpy() * 255).astype(np.uint8),
-                        )
+                        # imageio.imwrite(
+                        #     output_depth,
+                        #     ((depth / depth.max()).cpu().numpy() * 255).astype(np.uint8)
+                        # )
+                        # imageio.imwrite(
+                        #     output_image,
+                        #     (rgb.cpu().numpy() * 255).astype(np.uint8),
+                        # )
 
                 psnr_avg = sum(psnrs) / len(psnrs)
                 logger.add_scalar('eval/psnr_all', psnr_avg, step)
                 logger.add_image('eval/image', rgb, step, dataformats='HWC')
+                (output_folder / args.run_name / f'steps_{step}').mkdir(exist_ok=True, parents=True)
                 with open(output_folder / args.run_name / f'steps_{step}.txt', 'w') as f:
                     f.write(str(psnr_avg))
 
