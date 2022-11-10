@@ -185,12 +185,77 @@ class FreqHash(nn.Module):
         self.num_feats = num_feats
 
         # freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
+        scales = torch.linspace(2.0 ** min_deg, 2.0 ** max_deg, num_freqs)
+        self.scales = nn.Parameter(scales, False)
+
+        res = 2 ** log2_res
+        f = torch.randn((num_freqs * 2 * 3, num_feats, res, 1)) * std
+        self.features = nn.Parameter(f, True)
+
+    @property
+    def latent_dim(self) -> int:
+        return (
+            int(self.use_identity) + (self.num_freqs) * 2 * self.num_feats
+        ) * self.x_dim
+
+    def pos_encode(self, points):
+        N = points.shape[0]
+        freq_points = points.view(N, 1, -1) * self.scales.to(points).view(1, -1, 1)
+
+        # NxFx2x3 => Nx(Fx2x3)
+        return torch.stack((freq_points.sin(), freq_points.cos()), -2).view(N, -1).T.contiguous()
+
+    def encoder(self, encs):
+        # (Fx2x3)xN
+        NF = self.num_freqs
+        N = encs.shape[-1]
+
+        # (Fx2x3)xCxRx1
+        cv = self.features
+
+        C = cv.shape[1]
+        encs = encs.view(-1, 1, N, 1)
+        w = torch.zeros_like(encs)
+        grid = torch.cat((w, encs), -1)
+
+        # (Fx2x3)xCx1xN
+        fs = F.grid_sample(cv, grid, mode='bilinear', align_corners=True).view(NF, -1, 3, C, N)
+        fs = fs + encs.view(NF, -1, 3, 1, N)
+        return fs.permute(4, 3, 0, 1, 2).reshape(N, -1)
+
+    def forward(self, points):
+        """
+        must return features given points (and optional dirs)
+        """
+        if any([s == 0 for s in points.shape]):
+            return torch.zeros((0, self.latent_dim)).to(points)
+        enc = self.pos_encode(points)
+        features = self.encoder(enc)
+        if self.use_identity:
+            features = torch.cat((points, features), 1)
+
+        return features
+
+class FreqHashO(nn.Module):
+    def __init__(self, x_dim, min_deg=0, max_deg=5, num_freqs=6, log2_res=8, num_feats=8, std=0.1, use_identity=True):
+        super().__init__()
+        self.x_dim = x_dim
+        self.use_identity = use_identity
+        self.max_deg = max_deg
+        self.min_deg = min_deg
+        # num_freqs = max_deg - min_deg
+        self.num_freqs = num_freqs
+        self.num_feats = num_feats
+
+        # freqs = torch.tensor([2**i for i in range(min_deg, max_deg)])
         freqs = 2.0 ** torch.linspace(min_deg, max_deg, num_freqs)
 
         self.freqs = nn.Parameter(freqs, False)
         res = 2 ** log2_res
         f = torch.randn((num_freqs * 2 * 3, num_feats, res, 1)) * std
         self.cv = nn.Parameter(f, True)
+
+        self.features = self.cv
 
     @property
     def latent_dim(self) -> int:
@@ -212,6 +277,8 @@ class FreqHash(nn.Module):
 
         # (Fx2x3)xCxRx1
         cv = self.cv
+        cv = self.features
+
         C = cv.shape[1]
         encs = encs.view(-1, 1, N, 1)
         w = torch.zeros_like(encs)

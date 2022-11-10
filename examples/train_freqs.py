@@ -250,7 +250,7 @@ if __name__ == "__main__":
 
             # update occupancy grid
             def query_opacity(x):
-                chunk_size = 1024 * 1024
+                chunk_size = 512 * 1024
                 n = x.shape[0]
                 with torch.no_grad():
                     opacities = []
