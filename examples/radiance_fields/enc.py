@@ -173,7 +173,7 @@ class MultiFreqEncoder(nn.Module):
         return latent
 
 
-class FreqHash(nn.Module):
+class FreqHashO(nn.Module):
     def __init__(self, x_dim, min_deg=0, max_deg=5, num_freqs=6, log2_res=8, num_feats=8, std=0.1, use_identity=True):
         super().__init__()
         self.x_dim = x_dim
@@ -236,7 +236,7 @@ class FreqHash(nn.Module):
 
         return features
 
-class FreqHashO(nn.Module):
+class FreqHash(nn.Module):
     def __init__(self, x_dim, min_deg=0, max_deg=5, num_freqs=6, log2_res=8, num_feats=8, std=0.1, use_identity=True):
         super().__init__()
         self.x_dim = x_dim

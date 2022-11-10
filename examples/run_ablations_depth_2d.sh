@@ -1,4 +1,4 @@
-SCENE_IDS=(chair drums ficus hotdog lego materials mic ship)
+SCENE_IDS=(lego)
 DEPTHS=(3 4)
 for SCENE in ${SCENE_IDS[@]}; do
     for DEPTH in ${DEPTHS[@]}; do
