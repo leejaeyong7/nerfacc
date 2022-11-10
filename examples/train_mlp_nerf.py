@@ -292,10 +292,10 @@ if __name__ == "__main__":
                         psnr = -10.0 * torch.log(mse) / np.log(10.0)
                         psnrs.append(psnr.item())
 
-                        (output_folder / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
-                        (output_folder / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
-                        output_image = output_folder / f'steps_{step}' / 'images' / f'{step:06d}.png'
-                        output_depth = output_folder / f'steps_{step}' / 'depths' / f'{step:06d}.png'
+                        (output_folder / args.run_name / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
+                        (output_folder / args.run_name / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
+                        output_image = output_folder / args.run_name / f'steps_{step}' / 'images' / f'{step:06d}.png'
+                        output_depth = output_folder / args.run_name / f'steps_{step}' / 'depths' / f'{step:06d}.png'
 
                         imageio.imwrite(
                             output_depth,
