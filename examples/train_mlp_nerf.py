@@ -310,7 +310,7 @@ if __name__ == "__main__":
                 train_dataset.training = True
                 logger.add_scalar('eval/psnr_test', psnr_avg, step)
                 with open(output_folder / args.run_name / f'steps_{step}.txt', 'w') as f:
-                    f.write(psnr_avg)
+                    f.write(str(psnr_avg))
 
             global_it.update(1)
 
