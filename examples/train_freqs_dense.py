@@ -349,8 +349,8 @@ if __name__ == "__main__":
 
                         (output_folder / args.run_name / f'steps_{step}' / 'images').mkdir(exist_ok=True, parents=True)
                         (output_folder / args.run_name / f'steps_{step}' / 'depths').mkdir(exist_ok=True, parents=True)
-                        output_image = output_folder / args.run_name / f'steps_{step}' / 'images' / f'{step:06d}.png'
-                        output_depth = output_folder / args.run_name / f'steps_{step}' / 'depths' / f'{step:06d}.png'
+                        output_image = output_folder / args.run_name / f'steps_{step}' / 'images' / f'{i:06d}.png'
+                        output_depth = output_folder / args.run_name / f'steps_{step}' / 'depths' / f'{i:06d}.png'
 
                         imageio.imwrite(
                             output_depth,
