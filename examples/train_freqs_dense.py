@@ -155,10 +155,10 @@ if __name__ == "__main__":
                                                num_pos_f=args.num_f).to(device)
     else:
         radiance_field = FreqVMNeRFRadianceField(net_depth=args.net_depth, 
-                                                 log2_res_pos=args.log2_res, 
+                                                 log2_res=args.log2_res, 
                                                  num_pos_f=args.num_f).to(device)
 
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=4e-4)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
@@ -249,7 +249,7 @@ if __name__ == "__main__":
 
             # update occupancy grid
             def query_opacity(x):
-                chunk_size = 1024 * 1024
+                chunk_size = 512 * 1024
                 n = x.shape[0]
                 with torch.no_grad():
                     opacities = []
