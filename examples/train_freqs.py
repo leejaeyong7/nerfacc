@@ -123,6 +123,7 @@ if __name__ == "__main__":
     # logger = SummaryWriter(comment=args.log_path+"/" +args.run_name)
     logger = SummaryWriter(logdir=args.log_path + "/" + args.run_name)
     checkpoint_path = Path(args.checkpoint_path)
+    checkpoint_path.mkdir(exist_ok=True, parents=True)
 
     render_n_samples = 1024
 
