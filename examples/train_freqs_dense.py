@@ -364,6 +364,8 @@ if __name__ == "__main__":
                 psnr_avg = sum(psnrs) / len(psnrs)
                 logger.add_scalar('eval/psnr_all', psnr_avg, step)
                 logger.add_image('eval/image', rgb, step, dataformats='HWC')
+                with open(output_folder / args.run_name / f'steps_{step}.txt', 'w') as f:
+                    f.write(psnr_avg)
 
             global_it.update(1)
 

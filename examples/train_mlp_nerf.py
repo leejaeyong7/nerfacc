@@ -309,6 +309,9 @@ if __name__ == "__main__":
                 psnr_avg = sum(psnrs) / len(psnrs)
                 train_dataset.training = True
                 logger.add_scalar('eval/psnr_test', psnr_avg, step)
+                with open(output_folder / args.run_name / f'steps_{step}.txt', 'w') as f:
+                    f.write(psnr_avg)
+
             global_it.update(1)
 
             if step == max_steps:
