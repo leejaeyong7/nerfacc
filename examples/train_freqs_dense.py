@@ -158,7 +158,7 @@ if __name__ == "__main__":
                                                  log2_res=args.log2_res, 
                                                  num_pos_f=args.num_f).to(device)
 
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=4e-4)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
