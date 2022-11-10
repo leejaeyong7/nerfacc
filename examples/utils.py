@@ -64,6 +64,8 @@ def render_image(
         chunk_size = 1024 * 1024
         densities = []
         n = positions.shape[0]
+        if n == 0:
+            return radiance_field.query_density(positions)
         for s in range(0, n, chunk_size):
             _x = positions[s:s+chunk_size]
             densities.append(
@@ -89,6 +91,8 @@ def render_image(
         densities = []
         colors = []
         n = positions.shape[0]
+        if n == 0:
+            return radiance_field(positions, t_dirs)
         for s in range(0, n, chunk_size):
             _x = positions[s:s+chunk_size]
             _t = t_dirs[s:s+chunk_size]

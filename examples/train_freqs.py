@@ -93,7 +93,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_type",
         type=str,
-        choices=['1d', '2d']
+        choices=['1d', '2d'],
         help="Path to dataset",
     )
     parser.add_argument("--cone_angle", type=float, default=0.0)
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     else:
         radiance_field = FreqVMNeRFRadianceField().to(device)
 
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4, eps=1e-15)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
     grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-2, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    val_steps = 5000
+    val_steps = 15000
     for epoch in range(1000000):
         num_train_samples = len(train_dataset)
         # train_it = tqdm(range(num_train_samples), total=num_train_samples, dynamic_ncols=True, leave=False)
@@ -285,11 +285,10 @@ if __name__ == "__main__":
             )
             logger.add_scalar('train/loss', loss, step)
 
-            if step >= 0 and step % val_steps == 0 and step > 0:
+            if (step >= 0 and (step % val_steps == 0) and step > 0) or (step == max_steps):
                 torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_model_step_{step}.pth')
                 torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.run_name}_freq_2d_grid_step_{step}.pth')
 
-            if step >= 0 and step % val_steps == 0 and step > 0:
                 # evaluation
                 radiance_field.eval()
 
