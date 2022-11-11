@@ -305,7 +305,7 @@ class FreqNeRFRadianceField(nn.Module):
         skip_layer: int = 4,  # The layer to add skip layers to.
         net_depth_condition: int = 1,  # The depth of the second part of MLP.
         net_width_condition: int = 128,  # The width of the second part of MLP.
-        log2_res_pos: int = 9, 
+        log2_res_pos: int = 7, 
         num_pos_f: int = 16,  
     ) -> None:
         super().__init__()

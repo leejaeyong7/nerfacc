@@ -286,7 +286,7 @@ class FreqHash(nn.Module):
 
         # (Fx2x3)xCx1xN
         fs = F.grid_sample(cv, grid, mode='bilinear', align_corners=True).view(NF, -1, 3, C, N)
-        fs = fs + encs.view(NF, -1, 3, 1, N)
+        # fs = fs + encs.view(NF, -1, 3, 1, N)
         return fs.permute(4, 3, 0, 1, 2).reshape(N, -1)
 
     def forward(self, points):
@@ -385,7 +385,7 @@ class FreqVMEncoder(nn.Module):
         # Fx2x3xCxN
         # basis = self.params['basis']
         fs = (vec_f * mat_f)
-        fs = fs + encs.view(-1, 2, 3, 1, N)
+        # fs = fs + encs.view(-1, 2, 3, 1, N)
 
         return fs.permute(4, 3, 0, 1, 2).reshape(N, -1)
 
