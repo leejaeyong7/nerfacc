@@ -147,7 +147,7 @@ if __name__ == "__main__":
         ).item()
 
     # setup the radiance field we want to train.
-    max_steps = 50000
+    max_steps = 3000
     grad_scaler = torch.cuda.amp.GradScaler(1)
     if args.model_type == '1d':
         radiance_field = FreqNeRFRadianceField(net_depth=args.net_depth, 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    val_steps = list(range(0, 50000, 5000))[1:]
+    val_steps = [500, 1000, 3000]
 
     output_folder = Path(args.output_path)
 

@@ -125,8 +125,8 @@ if __name__ == "__main__":
         ).item()
 
     # setup the radiance field we want to train.
-    max_steps = 50000
-    val_steps = list(range(0, 50000, 5000))[1:]
+    max_steps = 3000
+    val_steps = [500, 1000, 3000]
 
     output_folder = Path(args.output_path)
 

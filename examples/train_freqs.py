@@ -23,7 +23,7 @@ from nerfacc import ContractionType, OccupancyGrid
 if __name__ == "__main__":
 
     device = "cuda:0"
-    set_random_seed(42)
+    set_random_seed(43)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -263,7 +263,7 @@ if __name__ == "__main__":
 
             occupancy_grid.every_n_step(
                 step=step,
-                occ_eval_fn=query_opacity
+                occ_eval_fn=query_opacity,
                 # occ_eval_fn=lambda x: radiance_field.query_opacity(
                 #     x, render_step_size
                 # )
