@@ -232,7 +232,7 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    val_steps = [500, 1000, 3000]
+    val_steps = [100, 300, 500]
 
     output_folder = Path(args.output_path)
 
