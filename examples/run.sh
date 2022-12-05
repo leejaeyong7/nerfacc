@@ -1,7 +1,6 @@
-SCENE_IDS=(mic lego chair drums ficus hotdog materials ship)
-SCENE_IDS=(hotdog ship)
+SCENES=(courtyard  delivery_area  electro  facade  kicker  meadow  office  pipes  playground  relief  relief_2  terrace  terrains)
 for SCENE in ${SCENE_IDS[@]}; do
-    python train_freqs.py --data_path=data/nerf_synthetic --log_path=logs --run_name=freq_2d_$SCENE --scene=$SCENE --train_split=train --model_type=2d
+    python train_freqs.py --data_path=data/nerf_synthetic --log_path=logs --run_name=freq_2d_$SCENE --scene=$SCENE --model_type=2d
 done
 
 
