@@ -54,14 +54,19 @@ class SubjectLoader(torch.utils.data.Dataset):
     """Single subject data loader for training and evaluation."""
 
     SUBJECT_IDS = [
-        "chair",
-        "drums",
-        "ficus",
-        "hotdog",
-        "lego",
-        "materials",
-        "mic",
-        "ship",
+        "courtyard",
+        "delivery_area",
+        "electro",
+        "facade",
+        "kicker",
+        "meadow",
+        "office",
+        "pipes",
+        "playground",
+        "relief",
+        "relief_2",
+        "terrace",
+        "terrains"
     ]
 
     WIDTH, HEIGHT = 960,640
