@@ -35,7 +35,7 @@ def _load_renderings(root_fp: str, subject_id: str):
 
     for i in range(len(meta["frames"])):
         frame = meta["frames"][i]
-        fname = os.path.join(data_dir, frame["file_path"] + ".png")
+        fname = os.path.join(data_dir, frame["file_path"])
         rgba = imageio.imread(fname)
         camtoworlds.append(frame["transform_matrix"])
         images.append(rgba)
