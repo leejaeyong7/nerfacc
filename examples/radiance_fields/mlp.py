@@ -166,6 +166,36 @@ class NerfMLP(nn.Module):
         raw_rgb = self.rgb_layer(x)
         return raw_rgb, raw_sigma
 
+    def forward_with_normal(self, x, condition=None):
+        with torch.enable_grad():
+            points = x
+            x = self.base(x)
+            raw_sigma = self.sigma_layer(x)
+            d_output = torch.ones_like(raw_sigma, requires_grad=False, device=y.device)
+            gradients = torch.autograd.grad(
+                outputs=raw_sigma,
+                inputs=points,
+                grad_outputs=d_output,
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True)[0]
+            normal = F.normalize(gradients, p=2, dim=-1)
+            if not self.training:
+                points = points.detach()
+                x = x.detach()
+                raw_sigma = raw_sigma.detach()
+
+        if condition is not None:
+            if condition.shape[:-1] != x.shape[:-1]:
+                num_rays, n_dim = condition.shape
+                condition = condition.view(
+                    [num_rays] + [1] * (x.dim() - condition.dim()) + [n_dim]
+                ).expand(list(x.shape[:-1]) + [n_dim])
+            bottleneck = self.bottleneck_layer(x)
+            x = torch.cat([bottleneck, condition], dim=-1)
+        raw_rgb = self.rgb_layer(x)
+        return raw_rgb, normal, raw_sigma
+
 
 class VanillaNeRFRadianceField(nn.Module):
     def __init__(
@@ -252,6 +282,32 @@ class MultiFreqNeRFRadianceField(nn.Module):
         rgb, sigma = self.mlp(x, condition=condition)
         return torch.sigmoid(rgb), F.relu(sigma)
 
+    def forward_with_normal(self, x, condition=None):
+        with torch.enable_grad():
+            points = x
+            x = self.posi_encoder(x)
+            if condition is not None:
+                condition = self.view_encoder(condition)
+            rgb, sigma = self.mlp(x, condition=condition)
+            d_output = torch.ones_like(sigma, requires_grad=False, device=sigma.device)
+            gradients = torch.autograd.grad(
+                outputs=sigma,
+                inputs=points,
+                grad_outputs=d_output,
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True)[0]
+            normal = F.normalize(-gradients, p=2, dim=-1)
+            if not self.training:
+                points = points.detach()
+                x = x.detach()
+                rgb = rgb.detach()
+                sigma= sigma.detach()
+                normal= normal.detach()
+                gradients= gradients.detach()
+
+        return rgb.sigmoid(), normal, F.relu(sigma)
+
 class FreqVMNeRFRadianceField(nn.Module):
     def __init__(
         self,
@@ -295,6 +351,33 @@ class FreqVMNeRFRadianceField(nn.Module):
             condition = self.view_encoder(condition)
         rgb, sigma = self.mlp(x, condition=condition)
         return torch.sigmoid(rgb), F.relu(sigma)
+
+    def forward_with_normal(self, x, condition=None):
+        with torch.enable_grad():
+            points = x
+            points.requires_grad_(True)
+            x = self.posi_encoder(x)
+            if condition is not None:
+                condition = self.view_encoder(condition)
+            rgb, sigma = self.mlp(x, condition=condition)
+            d_output = torch.ones_like(sigma, requires_grad=False, device=sigma.device)
+            gradients = torch.autograd.grad(
+                outputs=sigma,
+                inputs=points,
+                grad_outputs=d_output,
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True)[0]
+            normal = F.normalize(-gradients, p=2, dim=-1)
+            if not self.training:
+                points = points.detach()
+                x = x.detach()
+                rgb = rgb.detach()
+                sigma= sigma.detach()
+                normal= normal.detach()
+                gradients= gradients.detach()
+
+        return rgb.sigmoid(), normal, F.relu(sigma)
 
 
 class FreqNeRFRadianceField(nn.Module):
@@ -340,6 +423,32 @@ class FreqNeRFRadianceField(nn.Module):
             condition = self.view_encoder(condition)
         rgb, sigma = self.mlp(x, condition=condition)
         return torch.sigmoid(rgb), F.relu(sigma)
+
+    def forward_with_normal(self, x, condition=None):
+        with torch.enable_grad():
+            points = x
+            x = self.posi_encoder(x)
+            if condition is not None:
+                condition = self.view_encoder(condition)
+            rgb, sigma = self.mlp(x, condition=condition)
+            d_output = torch.ones_like(sigma, requires_grad=False, device=sigma.device)
+            gradients = torch.autograd.grad(
+                outputs=sigma,
+                inputs=points,
+                grad_outputs=d_output,
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True)[0]
+            normal = F.normalize(-gradients, p=2, dim=-1)
+            if not self.training:
+                points = points.detach()
+                x = x.detach()
+                rgb = rgb.detach()
+                sigma= sigma.detach()
+                normal= normal.detach()
+                gradients= gradients.detach()
+
+        return rgb.sigmoid(), normal, F.relu(sigma)
 
 class DNeRFRadianceField(nn.Module):
     def __init__(self) -> None:

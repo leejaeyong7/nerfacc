@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .grid_encoder import grid_sample
 
 class SinusoidalEncoder(nn.Module):
     """Sinusoidal Positional Encoder used in Nerf."""
@@ -97,7 +98,7 @@ class FreqEncoder(nn.Module):
         grid_latent = latent.view(-1, num_feats).T.view(num_feats, 1, -1, 1)
         zs = torch.zeros_like(grid_latent)
         grid = torch.cat((zs, grid_latent), -1)
-        fs = F.grid_sample(self.features, grid, mode='bilinear', align_corners=True).view(num_scales, 2, self.x_dim, num_channels, -1)
+        fs = grid_sample(self.features, grid).view(num_scales, 2, self.x_dim, num_channels, -1)
 
         # NxCxFx2x3
         latent = (fs.permute(4, 3, 0, 1, 2) + latent.view(-1, 1, num_scales, 2, self.x_dim)).reshape(*x.shape[:-1], -1)
@@ -162,7 +163,7 @@ class MultiFreqEncoder(nn.Module):
         for i, scale in enumerate(self.scales):
             # 23xCx1xN + 23x1x1xN
             num_channels = self.features[i].shape[1]
-            fs = F.grid_sample(self.features[i], grid[i], mode='bilinear', align_corners=True).view(2, self.x_dim, num_channels, -1)
+            fs = grid_sample(self.features[i], grid[i]).view(2, self.x_dim, num_channels, -1)
             latents.append(fs.permute(3, 2, 0, 1))
 
         # Fx2x3xCxN
@@ -219,7 +220,7 @@ class FreqHash(nn.Module):
         grid = torch.cat((w, encs), -1)
 
         # (Fx2x3)xCx1xN
-        fs = F.grid_sample(cv, grid, mode='bilinear', align_corners=True).view(NF, -1, 3, C, N)
+        fs = grid_sample(cv, grid).view(NF, -1, 3, C, N)
         fs = fs + encs.view(NF, -1, 3, 1, N)
         return fs.permute(4, 3, 0, 1, 2).reshape(N, -1)
 
@@ -285,7 +286,7 @@ class FreqHashO(nn.Module):
         grid = torch.cat((w, encs), -1)
 
         # (Fx2x3)xCx1xN
-        fs = F.grid_sample(cv, grid, mode='bilinear', align_corners=True).view(NF, -1, 3, C, N)
+        fs = grid_sample(cv, grid).view(NF, -1, 3, C, N)
         fs = fs + encs.view(NF, -1, 3, 1, N)
         return fs.permute(4, 3, 0, 1, 2).reshape(N, -1)
 
@@ -376,11 +377,11 @@ class FreqVMEncoder(nn.Module):
         grid = torch.cat((w, encs), -1)
 
         # (Fx2x3)xCx1xN
-        vec_f = F.grid_sample(cv, grid, mode='bilinear', align_corners=True).view(-1, 2, 3, C, N)
+        vec_f = grid_sample(cv, grid).view(-1, 2, 3, C, N)
         cm = self.params['cm']
 
         # Fx2x3xCxN
-        mat_f = F.grid_sample(cm, mat_grid, mode='bilinear', align_corners=True).view(-1, 2, 3, C, N)
+        mat_f = grid_sample(cm, mat_grid).view(-1, 2, 3, C, N)
 
         # Fx2x3xCxN
         # basis = self.params['basis']
