@@ -302,7 +302,8 @@ if __name__ == "__main__":
 
 
             # compute loss
-            rgb_loss = F.smooth_l1_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
+            # rgb_loss = F.smooth_l1_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
+            rgb_loss = F.l1_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
             if has_normal:
                 normal_l1_loss = torch.abs(normal[alive_ray_mask] - gt_normals[alive_ray_mask]).sum(dim=-1).mean()
                 normal_cos_loss = (1. - torch.sum(normal[alive_ray_mask] * gt_normals[alive_ray_mask], dim = -1)).mean()
