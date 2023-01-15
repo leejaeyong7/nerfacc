@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .encoders import MultiFourierEncoder, SinusoidalEncoder
+
 
 class MLP(nn.Module):
     def __init__(
@@ -165,44 +167,6 @@ class NerfMLP(nn.Module):
         return raw_rgb, raw_sigma
 
 
-class SinusoidalEncoder(nn.Module):
-    """Sinusoidal Positional Encoder used in Nerf."""
-
-    def __init__(self, x_dim, min_deg, max_deg, use_identity: bool = True):
-        super().__init__()
-        self.x_dim = x_dim
-        self.min_deg = min_deg
-        self.max_deg = max_deg
-        self.use_identity = use_identity
-        self.register_buffer(
-            "scales", torch.tensor([2**i for i in range(min_deg, max_deg)])
-        )
-
-    @property
-    def latent_dim(self) -> int:
-        return (
-            int(self.use_identity) + (self.max_deg - self.min_deg) * 2
-        ) * self.x_dim
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: [..., x_dim]
-        Returns:
-            latent: [..., latent_dim]
-        """
-        if self.max_deg == self.min_deg:
-            return x
-        xb = torch.reshape(
-            (x[Ellipsis, None, :] * self.scales[:, None]),
-            list(x.shape[:-1]) + [(self.max_deg - self.min_deg) * self.x_dim],
-        )
-        latent = torch.sin(torch.cat([xb, xb + 0.5 * math.pi], dim=-1))
-        if self.use_identity:
-            latent = torch.cat([x] + [latent], dim=-1)
-        return latent
-
-
 class VanillaNeRFRadianceField(nn.Module):
     def __init__(
         self,
@@ -211,9 +175,13 @@ class VanillaNeRFRadianceField(nn.Module):
         skip_layer: int = 4,  # The layer to add skip layers to.
         net_depth_condition: int = 1,  # The depth of the second part of MLP.
         net_width_condition: int = 128,  # The width of the second part of MLP.
+        multidim=False
     ) -> None:
         super().__init__()
-        self.posi_encoder = SinusoidalEncoder(3, 0, 10, True)
+        if multidim:
+            self.posi_encoder = MultiFourierEncoder(3, net_width, 0, 7, True)
+        else:
+            self.posi_encoder = SinusoidalEncoder(3, 0, 10, True)
         self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
         self.mlp = NerfMLP(
             input_dim=self.posi_encoder.latent_dim,
