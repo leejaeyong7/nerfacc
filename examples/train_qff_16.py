@@ -11,12 +11,9 @@ import imageio
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
-from radiance_fields.mlp import VanillaNeRFRadianceField, FreqNeRFRadianceField, QFFRadianceField
-from pathlib import Path
+import tqdm
+from radiance_fields.ngp import NGPradianceField
 from utils import render_image, set_random_seed
-
-from tensorboardX import SummaryWriter
 
 from nerfacc import ContractionType, OccupancyGrid
 
@@ -49,6 +46,12 @@ if __name__ == "__main__":
             "ship",
             # mipnerf360 unbounded
             "garden",
+            "bicycle",
+            "bonsai",
+            "counter",
+            "kitchen",
+            "room",
+            "stump",
         ],
         help="which scene to use",
     )
@@ -61,7 +64,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test_chunk_size",
         type=int,
-        default=4096,
+        default=8192,
     )
     parser.add_argument(
         "--unbounded",
@@ -69,100 +72,31 @@ if __name__ == "__main__":
         help="whether to use unbounded rendering",
     )
     parser.add_argument(
-        "--data_path",
-        type=str,
-        help="Path to dataset",
-    )
-    parser.add_argument(
-        "--log_path",
-        type=str,
-        help="Path to dataset",
-        default='logs'
-    )
-    parser.add_argument(
-        "--checkpoint_path",
-        type=str,
-        help="Path to dataset",
-        default='checkpoints'
-    )
-    parser.add_argument(
-        "--run_name",
-        type=str,
+        "--auto_aabb",
+        action="store_true",
+        help="whether to automatically compute the aabb",
     )
     parser.add_argument("--cone_angle", type=float, default=0.0)
     args = parser.parse_args()
 
-    # logger = SummaryWriter(comment=args.log_path+"/" +args.run_name)
-    logger = SummaryWriter(logdir=args.log_path + "/" + args.run_name)
-    checkpoint_path = Path(args.checkpoint_path)
-
     render_n_samples = 1024
-
-    # setup the scene bounding box.
-    if args.unbounded:
-        print("Using unbounded rendering")
-        contraction_type = ContractionType.UN_BOUNDED_SPHERE
-        # contraction_type = ContractionType.UN_BOUNDED_TANH
-        scene_aabb = None
-        near_plane = 0.2
-        far_plane = 1e4
-        render_step_size = 1e-2
-    else:
-        contraction_type = ContractionType.AABB
-        scene_aabb = torch.tensor(args.aabb, dtype=torch.float32, device=device)
-        near_plane = None
-        far_plane = None
-        render_step_size = (
-            (scene_aabb[3:] - scene_aabb[:3]).max()
-            * math.sqrt(3)
-            / render_n_samples
-        ).item()
-
-    # setup the radiance field we want to train.
-    max_steps = 50000
-    grad_scaler = torch.cuda.amp.GradScaler(1)
-    # radiance_field = VanillaNeRFRadianceField().to(device)
-    radiance_field = QFFRadianceField().to(device)
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
-    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=5e-3)
-    # grid_optimizer = torch.optim.Adam(radiance_field.posi_encoder.parameters(), lr=5e-4)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer,
-        milestones=[
-            max_steps // 2,
-            max_steps * 3 // 4,
-            max_steps * 5 // 6,
-            max_steps * 9 // 10,
-        ],
-        gamma=0.33,
-    )
-    grid_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        grid_optimizer,
-        milestones=[
-            max_steps // 2,
-            max_steps * 3 // 4,
-            max_steps * 5 // 6,
-            max_steps * 9 // 10,
-        ],
-        gamma=0.33,
-    )
 
     # setup the dataset
     train_dataset_kwargs = {}
     test_dataset_kwargs = {}
-    if args.scene == "garden":
+    if args.unbounded:
         from datasets.nerf_360_v2 import SubjectLoader
 
-        data_root_fp = args.data_path
-        target_sample_batch_size = 1 << 16
+        data_root_fp = "/home/ruilongli/data/360_v2/"
+        target_sample_batch_size = 1 << 20
         train_dataset_kwargs = {"color_bkgd_aug": "random", "factor": 4}
         test_dataset_kwargs = {"factor": 4}
-        grid_resolution = 128
+        grid_resolution = 256
     else:
         from datasets.nerf_synthetic import SubjectLoader
 
-        data_root_fp = args.data_path
-        target_sample_batch_size = 1 << 16
+        data_root_fp = "/home/ruilongli/data/nerf_synthetic/"
+        target_sample_batch_size = 1 << 18
         grid_resolution = 128
 
     train_dataset = SubjectLoader(
@@ -188,6 +122,53 @@ if __name__ == "__main__":
     test_dataset.camtoworlds = test_dataset.camtoworlds.to(device)
     test_dataset.K = test_dataset.K.to(device)
 
+    if args.auto_aabb:
+        camera_locs = torch.cat(
+            [train_dataset.camtoworlds, test_dataset.camtoworlds]
+        )[:, :3, -1]
+        args.aabb = torch.cat(
+            [camera_locs.min(dim=0).values, camera_locs.max(dim=0).values]
+        ).tolist()
+        print("Using auto aabb", args.aabb)
+
+    # setup the scene bounding box.
+    if args.unbounded:
+        print("Using unbounded rendering")
+        contraction_type = ContractionType.UN_BOUNDED_SPHERE
+        # contraction_type = ContractionType.UN_BOUNDED_TANH
+        scene_aabb = None
+        near_plane = 0.2
+        far_plane = 1e4
+        render_step_size = 1e-2
+        alpha_thre = 1e-2
+    else:
+        contraction_type = ContractionType.AABB
+        scene_aabb = torch.tensor(args.aabb, dtype=torch.float32, device=device)
+        near_plane = None
+        far_plane = None
+        render_step_size = (
+            (scene_aabb[3:] - scene_aabb[:3]).max()
+            * math.sqrt(3)
+            / render_n_samples
+        ).item()
+        alpha_thre = 0.0
+
+    # setup the radiance field we want to train.
+    max_steps = 20000
+    grad_scaler = torch.cuda.amp.GradScaler(2**10)
+    radiance_field = NGPradianceField(
+        aabb=args.aabb,
+        unbounded=args.unbounded,
+    ).to(device)
+    optimizer = torch.optim.Adam(
+        radiance_field.parameters(), lr=1e-2, eps=1e-15
+    )
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer,
+        milestones=[max_steps // 2, max_steps * 3 // 4, max_steps * 9 // 10],
+        gamma=0.33,
+    )
+
     occupancy_grid = OccupancyGrid(
         roi_aabb=args.aabb,
         resolution=grid_resolution,
@@ -197,11 +178,8 @@ if __name__ == "__main__":
     # training
     step = 0
     tic = time.time()
-    global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    for epoch in range(1000000):
-        num_train_samples = len(train_dataset)
-        # train_it = tqdm(range(num_train_samples), total=num_train_samples, dynamic_ncols=True, leave=False)
-        for i in range(num_train_samples):
+    for epoch in range(10000000):
+        for i in range(len(train_dataset)):
             radiance_field.train()
             data = train_dataset[i]
 
@@ -209,25 +187,33 @@ if __name__ == "__main__":
             rays = data["rays"]
             pixels = data["pixels"]
 
-            def query_opacity(x):
-                chunk_size = 1024 * 1024
-                n = x.shape[0]
-                with torch.no_grad():
-                    opacities = []
-                    for s in range(0, n, chunk_size):
-                        _x = x[s:s+chunk_size]
-                        opacities.append(
-                            radiance_field.query_opacity(_x, render_step_size)
+            def occ_eval_fn(x):
+                if args.cone_angle > 0.0:
+                    # randomly sample a camera for computing step size.
+                    camera_ids = torch.randint(
+                        0, len(train_dataset), (x.shape[0],), device=device
+                    )
+                    origins = train_dataset.camtoworlds[camera_ids, :3, -1]
+                    t = (origins - x).norm(dim=-1, keepdim=True)
+                    # compute actual step size used in marching, based on the distance to the camera.
+                    step_size = torch.clamp(
+                        t * args.cone_angle, min=render_step_size
+                    )
+                    # filter out the points that are not in the near far plane.
+                    if (near_plane is not None) and (near_plane is not None):
+                        step_size = torch.where(
+                            (t > near_plane) & (t < far_plane),
+                            step_size,
+                            torch.zeros_like(step_size),
                         )
-                    return torch.cat(opacities)
+                else:
+                    step_size = render_step_size
+                # compute occupancy
+                density = radiance_field.query_density(x)
+                return density * step_size
 
-            occupancy_grid.every_n_step(
-                step=step,
-                occ_eval_fn=query_opacity
-                # occ_eval_fn=lambda x: radiance_field.query_opacity(
-                #     x, render_step_size
-                # )
-            )
+            # update occupancy grid
+            occupancy_grid.every_n_step(step=step, occ_eval_fn=occ_eval_fn)
 
             # render
             rgb, acc, depth, n_rendering_samples = render_image(
@@ -241,6 +227,7 @@ if __name__ == "__main__":
                 render_step_size=render_step_size,
                 render_bkgd=render_bkgd,
                 cone_angle=args.cone_angle,
+                alpha_thre=alpha_thre,
             )
             if n_rendering_samples == 0:
                 continue
@@ -258,21 +245,20 @@ if __name__ == "__main__":
             loss = F.smooth_l1_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
 
             optimizer.zero_grad()
-            grid_optimizer.zero_grad()
             # do not unscale it because we are using Adam.
             grad_scaler.scale(loss).backward()
             optimizer.step()
             scheduler.step()
-            grid_optimizer.step()
-            grid_scheduler.step()
 
-            mse_loss = F.mse_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
-            global_it.set_description(
-                f"loss={loss:.5f} | " + 
-                f"alive_ray_mask={alive_ray_mask.long().sum():05d} | " + 
-                f"n_rendering_samples={n_rendering_samples:06d} | num_rays={len(pixels):05d} |"
-            )
-            logger.add_scalar('train/loss', loss, step)
+            if step % 10000 == 0:
+                elapsed_time = time.time() - tic
+                loss = F.mse_loss(rgb[alive_ray_mask], pixels[alive_ray_mask])
+                print(
+                    f"elapsed_time={elapsed_time:.2f}s | step={step} | "
+                    f"loss={loss:.5f} | "
+                    f"alive_ray_mask={alive_ray_mask.long().sum():d} | "
+                    f"n_rendering_samples={n_rendering_samples:d} | num_rays={len(pixels):d} |"
+                )
 
             if step >= 0 and step % max_steps == 0 and step > 0:
                 # evaluation
@@ -280,9 +266,7 @@ if __name__ == "__main__":
 
                 psnrs = []
                 with torch.no_grad():
-                    torch.save(radiance_field.state_dict(), checkpoint_path / f'{args.scene}_freq_model.pth')
-                    torch.save(occupancy_grid.state_dict(), checkpoint_path / f'{args.scene}_freq_grid.pth')
-                    for i in tqdm(range(len(test_dataset)), leave=False):
+                    for i in tqdm.tqdm(range(len(test_dataset))):
                         data = test_dataset[i]
                         render_bkgd = data["color_bkgd"]
                         rays = data["rays"]
@@ -295,11 +279,12 @@ if __name__ == "__main__":
                             rays,
                             scene_aabb,
                             # rendering options
-                            near_plane=None,
-                            far_plane=None,
+                            near_plane=near_plane,
+                            far_plane=far_plane,
                             render_step_size=render_step_size,
                             render_bkgd=render_bkgd,
                             cone_angle=args.cone_angle,
+                            alpha_thre=alpha_thre,
                             # test options
                             test_chunk_size=args.test_chunk_size,
                         )
@@ -318,8 +303,6 @@ if __name__ == "__main__":
                 psnr_avg = sum(psnrs) / len(psnrs)
                 print(f"evaluation: psnr_avg={psnr_avg}")
                 train_dataset.training = True
-                logger.add_scalar('eval/psnr', psnr_avg, step)
-            global_it.update(1)
 
             if step == max_steps:
                 print("training stops")

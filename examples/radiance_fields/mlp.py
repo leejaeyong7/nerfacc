@@ -309,7 +309,7 @@ class FreqNeRFRadianceField(nn.Module):
         num_pos_f: int = 16,  
     ) -> None:
         super().__init__()
-        self.posi_encoder = FreqHash(3, 0, 5, 6, log2_res_pos, num_pos_f, use_identity=True)
+        self.posi_encoder = QFF(3, 0, 5, 6, log2_res_pos, num_pos_f, use_identity=True)
         self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
 
         self.mlp = NerfMLP(
@@ -377,3 +377,48 @@ class DNeRFRadianceField(nn.Module):
             torch.cat([self.posi_encoder(x), self.time_encoder(t)], dim=-1)
         )
         return self.nerf(x, condition=condition)
+
+
+class QFFRadianceField(nn.Module):
+    def __init__(
+        self,
+        net_depth: int = 2,  # The depth of the MLP.
+        net_width: int = 256,  # The width of the MLP.
+        skip_layer: int = 4,  # The layer to add skip layers to.
+        net_depth_condition: int = 1,  # The depth of the second part of MLP.
+        net_width_condition: int = 128,  # The width of the second part of MLP.
+        log2_res_pos: int = 9, 
+        num_pos_f: int = 16,  
+    ) -> None:
+        super().__init__()
+        self.posi_encoder = QFF(3, -2, 5, 16, 64, 1, 0.00001, True)
+        self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
+
+        self.mlp = NerfMLP(
+            input_dim=self.posi_encoder.latent_dim,
+            condition_dim=self.view_encoder.latent_dim,
+            net_depth=net_depth,
+            net_width=net_width,
+            skip_layer=skip_layer,
+            net_depth_condition=net_depth_condition,
+            net_width_condition=net_width_condition,
+        )
+
+    def query_opacity(self, x, step_size):
+        density = self.query_density(x)
+        # if the density is small enough those two are the same.
+        # opacity = 1.0 - torch.exp(-density * step_size)
+        opacity = density * step_size
+        return opacity
+
+    def query_density(self, x):
+        x = self.posi_encoder(x)
+        sigma = self.mlp.query_density(x)
+        return F.relu(sigma)
+
+    def forward(self, x, condition=None):
+        x = self.posi_encoder(x)
+        if condition is not None:
+            condition = self.view_encoder(condition)
+        rgb, sigma = self.mlp(x, condition=condition)
+        return torch.sigmoid(rgb), F.relu(sigma)

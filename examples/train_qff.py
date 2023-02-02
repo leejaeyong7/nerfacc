@@ -23,35 +23,39 @@ from nerfacc import ContractionType, OccupancyGrid
 if __name__ == "__main__":
 
     device = "cuda:0"
-    set_random_seed(40)
+    set_random_seed(42)
 
     parser = argparse.ArgumentParser()
-
+    parser.add_argument(
+        "--train_split",
+        type=str,
+        default="trainval",
+        choices=["train", "trainval"],
+        help="which train split to use",
+    )
     parser.add_argument(
         "--scene",
         type=str,
-        default="courtyard",
+        default="lego",
         choices=[
-            "courtyard",
-            "delivery_area",
-            "electro",
-            "facade",
-            "kicker",
-            "meadow",
-            "office",
-            "pipes",
-            "playground",
-            "relief",
-            "relief_2",
-            "terrace",
-            "terrains"
+            # nerf synthetic
+            "chair",
+            "drums",
+            "ficus",
+            "hotdog",
+            "lego",
+            "materials",
+            "mic",
+            "ship",
+            # mipnerf360 unbounded
+            "garden",
         ],
         help="which scene to use",
     )
     parser.add_argument(
         "--aabb",
         type=lambda s: [float(item) for item in s.split(",")],
-        default="-3.14,-3.14,-3.14,3.14,3.14,3.14",
+        default="-1.5,-1.5,-1.5,1.5,1.5,1.5",
         help="delimited list input",
     )
     parser.add_argument(
@@ -92,14 +96,9 @@ if __name__ == "__main__":
         default='outputs'
     )
     parser.add_argument(
-        "--log2_res",
-        type=int,
-        default=7
-    )
-    parser.add_argument(
         "--num_f",
         type=int,
-        default=16
+        default=1
     )
     parser.add_argument(
         "--net_depth",
@@ -107,12 +106,6 @@ if __name__ == "__main__":
         default=2
     )
 
-    parser.add_argument(
-        "--model_type",
-        type=str,
-        choices=['1d', '2d'],
-        help="Path to dataset",
-    )
     parser.add_argument("--cone_angle", type=float, default=0.0)
     args = parser.parse_args()
 
@@ -146,17 +139,9 @@ if __name__ == "__main__":
     # setup the radiance field we want to train.
     max_steps = 50000
     grad_scaler = torch.cuda.amp.GradScaler(1)
-    if args.model_type == '1d':
-        radiance_field = FreqNeRFRadianceField(net_depth=args.net_depth, 
-                                               log2_res_pos=args.log2_res, 
-                                               num_pos_f=args.num_f).to(device)
-    else:
-        radiance_field = FreqVMNeRFRadianceField(net_depth=args.net_depth, 
-                                                 log2_res=args.log2_res, 
-                                                 num_pos_f=args.num_f).to(device)
-
-    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=5e-4)
-    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=5e-3, eps=1e-15)
+    radiance_field = QFFRadianceField().to(device)
+    optimizer = torch.optim.Adam(radiance_field.mlp.parameters(), lr=1e-4)
+    grid_optimizer = torch.optim.Adam(list(radiance_field.posi_encoder.parameters()) + list(radiance_field.view_encoder.parameters()), lr=1e-3, eps=1e-15)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
         milestones=[
@@ -181,17 +166,26 @@ if __name__ == "__main__":
     # setup the dataset
     train_dataset_kwargs = {}
     test_dataset_kwargs = {}
-    from datasets.eth3d import SubjectLoader
+    if args.scene == "garden":
+        from datasets.nerf_360_v2 import SubjectLoader
 
-    data_root_fp = args.data_path
-    target_sample_batch_size = 1 << 16
-    grid_resolution = 128
+        data_root_fp = args.data_path
+        target_sample_batch_size = 1 << 16
+        train_dataset_kwargs = {"color_bkgd_aug": "random", "factor": 4}
+        test_dataset_kwargs = {"factor": 4}
+        grid_resolution = 128
+    else:
+        from datasets.nerf_synthetic import SubjectLoader
+
+        data_root_fp = args.data_path
+        target_sample_batch_size = 1 << 16
+        grid_resolution = 128
 
     train_dataset = SubjectLoader(
         subject_id=args.scene,
         root_fp=data_root_fp,
+        split=args.train_split,
         num_rays=target_sample_batch_size // render_n_samples,
-        training=True,
         **train_dataset_kwargs,
     )
 
@@ -202,8 +196,8 @@ if __name__ == "__main__":
     test_dataset = SubjectLoader(
         subject_id=args.scene,
         root_fp=data_root_fp,
+        split="test",
         num_rays=None,
-        training=False,
         **test_dataset_kwargs,
     )
     test_dataset.images = test_dataset.images.to(device)
@@ -220,7 +214,7 @@ if __name__ == "__main__":
     step = 0
     tic = time.time()
     global_it = tqdm(range(max_steps), dynamic_ncols=True)
-    val_steps = [10000, 20000, 30000, 40000, 50000]
+    val_steps = [50000]
 
     output_folder = Path(args.output_path)
 
@@ -353,6 +347,8 @@ if __name__ == "__main__":
                 logger.add_scalar('eval/psnr_all', psnr_avg, step)
                 logger.add_image('eval/image', rgb, step, dataformats='HWC')
                 (output_folder / args.run_name / f'steps_{step}').mkdir(exist_ok=True, parents=True)
+                print('')
+                print(psnr_avg)
                 with open(output_folder / args.run_name / f'steps_{step}.txt', 'w') as f:
                     f.write(str(psnr_avg))
 

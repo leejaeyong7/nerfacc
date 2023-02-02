@@ -119,3 +119,9 @@ venv.bak/
 
 benchmarks/
 outputs/
+data/
+examples/data
+/data
+examples/outputs
+examples/logs
+examples/checkpoints
