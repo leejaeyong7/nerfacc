@@ -145,10 +145,12 @@ class SubjectLoader(torch.utils.data.Dataset):
         else:
             # just use white during inference
             color_bkgd = torch.ones(3, device=self.images.device)
-
+        rgb = pixels
         pixels = pixels * alpha + color_bkgd * (1.0 - alpha)
         return {
             "pixels": pixels,  # [n_rays, 3] or [h, w, 3]
+            "rgb": rgb,  # [n_rays, 3] or [h, w, 3]
+            "alpha": alpha,  # [n_rays, 3] or [h, w, 3]
             "rays": rays,  # [n_rays,] or [h, w]
             "color_bkgd": color_bkgd,  # [3,]
             **{k: v for k, v in data.items() if k not in ["rgba", "rays"]},

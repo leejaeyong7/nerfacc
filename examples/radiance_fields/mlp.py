@@ -11,7 +11,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .enc import *
+import tinycudann as tcnn
 
+class _TruncExp(Function):  # pylint: disable=abstract-method
+    # Implementation from torch-ngp:
+    # https://github.com/ashawkey/torch-ngp/blob/93b08a0d4ec1cc6e69d85df7f0acdfb99603b628/activation.py
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
+    def forward(ctx, x):  # pylint: disable=arguments-differ
+        ctx.save_for_backward(x)
+        return torch.exp(x)
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx, g):  # pylint: disable=arguments-differ
+        x = ctx.saved_tensors[0]
+        return g * torch.exp(torch.clamp(x, max=15))
+
+
+trunc_exp = _TruncExp.apply
 
 class MLP(nn.Module):
     def __init__(
@@ -382,28 +400,51 @@ class DNeRFRadianceField(nn.Module):
 class QFFRadianceField(nn.Module):
     def __init__(
         self,
-        net_depth: int = 2,  # The depth of the MLP.
+        num_freqs=16,
+        min_log2_freq=0,
+        max_log2_freq=5,
+        num_feature_per_freq=4,
+        quant_level=64,
+        net_depth: int = 3,  # The depth of the MLP.
         net_width: int = 256,  # The width of the MLP.
         skip_layer: int = 4,  # The layer to add skip layers to.
         net_depth_condition: int = 1,  # The depth of the second part of MLP.
         net_width_condition: int = 128,  # The width of the second part of MLP.
-        log2_res_pos: int = 9, 
-        num_pos_f: int = 16,  
     ) -> None:
         super().__init__()
-        self.posi_encoder = QFF(3, -2, 5, 16, 64, 1, 0.00001, True)
-        self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
-
-        self.mlp = NerfMLP(
-            input_dim=self.posi_encoder.latent_dim,
-            condition_dim=self.view_encoder.latent_dim,
-            net_depth=net_depth,
-            net_width=net_width,
-            skip_layer=skip_layer,
-            net_depth_condition=net_depth_condition,
-            net_width_condition=net_width_condition,
+        self.posi_encoder = QFFLite(
+            3, min_log2_freq, max_log2_freq, 
+            num_freqs, quant_level, num_feature_per_freq, 
+            0.00001, True
+        )
+        # self.posi_encoder = QFFLite(3, 0, 6, 16, 64, 8, 0.00001, True)
+        # self.view_encoder = SinusoidalEncoder(3, 0, 4, True)
+        self.density_mlp = nn.Sequential(
+            nn.Linear(self.posi_encoder.latent_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 16)
+        )
+        nn.init.uniform_(self.density_mlp[2].bias, 0, 1)
+        self.color_mlp = nn.Sequential(
+            nn.Linear(15 + 3, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 3)
         )
 
+        # self.density_mlp = nn.Linear(self.posi_encoder.latent_dim, 1)
+        # self.color_mlp = nn.Linear(self.posi_encoder.latent_dim + 3, 3)
+
+        # self.mlp = NerfMLP(
+        #     input_dim=self.posi_encoder.latent_dim,
+        #     condition_dim=self.view_encoder.latent_dim,
+        #     net_depth=net_depth,
+        #     net_width=net_width,
+        #     skip_layer=skip_layer,
+        #     net_depth_condition=net_depth_condition,
+        #     net_width_condition=net_width_condition,
+        # )
     def query_opacity(self, x, step_size):
         density = self.query_density(x)
         # if the density is small enough those two are the same.
@@ -411,14 +452,42 @@ class QFFRadianceField(nn.Module):
         opacity = density * step_size
         return opacity
 
-    def query_density(self, x):
+    def query_density(self, x, return_feat=False):
         x = self.posi_encoder(x)
-        sigma = self.mlp.query_density(x)
-        return F.relu(sigma)
+
+        s = self.density_mlp(x)
+
+        if return_feat:
+            return trunc_exp(s[:, :1]), s[:, 1:]
+        else:
+            return trunc_exp(s[:, :1])
 
     def forward(self, x, condition=None):
         x = self.posi_encoder(x)
+        s = self.density_mlp(x)
+        sigma = s[:, :1]
         if condition is not None:
-            condition = self.view_encoder(condition)
-        rgb, sigma = self.mlp(x, condition=condition)
+            cond_x = torch.cat((s[:, 1:], condition), 1)
+        else:
+            cond_x = torch.cat((s[:, 1:], condition), 1)
+        rgb = self.color_mlp(cond_x)
         return torch.sigmoid(rgb), F.relu(sigma)
+
+    # def query_opacity(self, x, step_size):
+    #     density = self.query_density(x)
+    #     # if the density is small enough those two are the same.
+    #     # opacity = 1.0 - torch.exp(-density * step_size)
+    #     opacity = density * step_size
+    #     return opacity
+
+    # def query_density(self, x):
+    #     x = self.posi_encoder(x)
+    #     sigma = self.mlp.query_density(x)
+    #     return F.relu(sigma)
+
+    # def forward(self, x, condition=None):
+    #     x = self.posi_encoder(x)
+    #     if condition is not None:
+    #         condition = self.view_encoder(condition)
+    #     rgb, sigma = self.mlp(x, condition=condition)
+    #     return torch.sigmoid(rgb), F.relu(sigma)
