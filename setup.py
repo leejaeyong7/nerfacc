@@ -29,7 +29,9 @@ def get_extensions():
     from torch.utils.cpp_extension import CUDAExtension
 
     extensions_dir = osp.join("nerfacc", "cuda", "csrc")
-    sources = glob.glob(osp.join(extensions_dir, "*.cu"))
+    sources = glob.glob(osp.join(extensions_dir, "*.cu")) + glob.glob(
+        osp.join(extensions_dir, "*.cpp")
+    )
     # remove generated 'hip' files, in case of rebuilds
     sources = [path for path in sources if "hip" not in path]
 
@@ -103,7 +105,11 @@ setup(
     download_url=f"{URL}/archive/{__version__}.tar.gz",
     keywords=[],
     python_requires=">=3.7",
-    install_requires=["rich>=12", "torch"],
+    install_requires=[
+        "rich>=12",
+        "torch",
+        "typing_extensions; python_version<'3.8'",
+    ],
     extras_require={
         # dev dependencies. Install them by `pip install nerfacc[dev]`
         "dev": [
@@ -116,11 +122,11 @@ setup(
             "pyyaml==6.0",
             "build",
             "twine",
+            "ninja",
         ],
     },
     ext_modules=get_extensions() if not BUILD_NO_CUDA else [],
     cmdclass={"build_ext": get_ext()} if not BUILD_NO_CUDA else {},
     packages=find_packages(),
-    package_data={"*": ["*.cu", "*.cpp", "*.h"]},
     include_package_data=include_package_data,
 )

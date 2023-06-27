@@ -15,56 +15,27 @@ def _make_lazy_cuda_func(name: str) -> Callable:
     return call_cuda
 
 
-ContractionTypeGetter = _make_lazy_cuda_func("ContractionType")
-contract = _make_lazy_cuda_func("contract")
-contract_inv = _make_lazy_cuda_func("contract_inv")
+# data specs
+RaySegmentsSpec = _make_lazy_cuda_func("RaySegmentsSpec")
 
-grid_query = _make_lazy_cuda_func("grid_query")
-
+# grid
 ray_aabb_intersect = _make_lazy_cuda_func("ray_aabb_intersect")
-ray_marching = _make_lazy_cuda_func("ray_marching")
-ray_resampling = _make_lazy_cuda_func("ray_resampling")
+traverse_grids = _make_lazy_cuda_func("traverse_grids")
 
-is_cub_available = _make_lazy_cuda_func("is_cub_available")
-transmittance_from_sigma_forward_cub = _make_lazy_cuda_func(
-    "transmittance_from_sigma_forward_cub"
-)
-transmittance_from_sigma_backward_cub = _make_lazy_cuda_func(
-    "transmittance_from_sigma_backward_cub"
-)
-transmittance_from_alpha_forward_cub = _make_lazy_cuda_func(
-    "transmittance_from_alpha_forward_cub"
-)
-transmittance_from_alpha_backward_cub = _make_lazy_cuda_func(
-    "transmittance_from_alpha_backward_cub"
-)
+# scan
+inclusive_sum = _make_lazy_cuda_func("inclusive_sum")
+exclusive_sum = _make_lazy_cuda_func("exclusive_sum")
+inclusive_prod_forward = _make_lazy_cuda_func("inclusive_prod_forward")
+inclusive_prod_backward = _make_lazy_cuda_func("inclusive_prod_backward")
+exclusive_prod_forward = _make_lazy_cuda_func("exclusive_prod_forward")
+exclusive_prod_backward = _make_lazy_cuda_func("exclusive_prod_backward")
 
-transmittance_from_sigma_forward_naive = _make_lazy_cuda_func(
-    "transmittance_from_sigma_forward_naive"
-)
-transmittance_from_sigma_backward_naive = _make_lazy_cuda_func(
-    "transmittance_from_sigma_backward_naive"
-)
-transmittance_from_alpha_forward_naive = _make_lazy_cuda_func(
-    "transmittance_from_alpha_forward_naive"
-)
-transmittance_from_alpha_backward_naive = _make_lazy_cuda_func(
-    "transmittance_from_alpha_backward_naive"
-)
+# pdf
+importance_sampling = _make_lazy_cuda_func("importance_sampling")
+searchsorted = _make_lazy_cuda_func("searchsorted")
 
-weight_from_sigma_forward_naive = _make_lazy_cuda_func(
-    "weight_from_sigma_forward_naive"
+# camera
+opencv_lens_undistortion = _make_lazy_cuda_func("opencv_lens_undistortion")
+opencv_lens_undistortion_fisheye = _make_lazy_cuda_func(
+    "opencv_lens_undistortion_fisheye"
 )
-weight_from_sigma_backward_naive = _make_lazy_cuda_func(
-    "weight_from_sigma_backward_naive"
-)
-weight_from_alpha_forward_naive = _make_lazy_cuda_func(
-    "weight_from_alpha_forward_naive"
-)
-weight_from_alpha_backward_naive = _make_lazy_cuda_func(
-    "weight_from_alpha_backward_naive"
-)
-
-unpack_data = _make_lazy_cuda_func("unpack_data")
-unpack_info = _make_lazy_cuda_func("unpack_info")
-unpack_info_to_mask = _make_lazy_cuda_func("unpack_info_to_mask")

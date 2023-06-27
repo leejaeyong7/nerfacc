@@ -86,6 +86,7 @@ class SubjectLoader(torch.utils.data.Dataset):
         near: float = None,
         far: float = None,
         batch_over_images: bool = True,
+        device: str = "cpu",
     ):
         super().__init__()
         assert split in self.SPLITS, "%s" % split
@@ -106,11 +107,15 @@ class SubjectLoader(torch.utils.data.Dataset):
             self.focal,
             self.timestamps,
         ) = _load_renderings(root_fp, subject_id, split)
-        self.images = torch.from_numpy(self.images).to(torch.uint8)
-        self.camtoworlds = torch.from_numpy(self.camtoworlds).to(torch.float32)
-        self.timestamps = torch.from_numpy(self.timestamps).to(torch.float32)[
-            :, None
-        ]
+        self.images = torch.from_numpy(self.images).to(device).to(torch.uint8)
+        self.camtoworlds = (
+            torch.from_numpy(self.camtoworlds).to(device).to(torch.float32)
+        )
+        self.timestamps = (
+            torch.from_numpy(self.timestamps)
+            .to(device)
+            .to(torch.float32)[:, None]
+        )
         self.K = torch.tensor(
             [
                 [self.focal, 0, self.WIDTH / 2.0],
@@ -118,6 +123,7 @@ class SubjectLoader(torch.utils.data.Dataset):
                 [0, 0, 1],
             ],
             dtype=torch.float32,
+            device=device,
         )  # (3, 3)
         assert self.images.shape[1:3] == (self.HEIGHT, self.WIDTH)
 
@@ -170,7 +176,7 @@ class SubjectLoader(torch.utils.data.Dataset):
                     device=self.images.device,
                 )
             else:
-                image_id = [index]
+                image_id = [index] * num_rays
             x = torch.randint(
                 0, self.WIDTH, size=(num_rays,), device=self.images.device
             )
