@@ -13,7 +13,7 @@ except ImportError:
 import numpy as np
 import torch
 from datasets.utils import Rays, namedtuple_map
-from torch.utils.data._utils.collate import collate, default_collate_fn_map
+from torch.utils.data._utils.collate import default_collate, default_collate_fn_map
 
 from nerfacc.estimators.occ_grid import OccGridEstimator
 from nerfacc.estimators.prop_net import PropNetEstimator
@@ -234,7 +234,7 @@ def render_image_with_propnet(
         chunk_results = [rgb, opacity, depth]
         results.append(chunk_results)
 
-    colors, opacities, depths = collate(
+    colors, opacities, depths = default_collate(
         results,
         collate_fn_map={
             **default_collate_fn_map,
