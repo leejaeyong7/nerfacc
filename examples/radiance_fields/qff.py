@@ -3,6 +3,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from .sh import spherical_harmonics
 from .ngp import trunc_exp
 
@@ -231,13 +232,25 @@ class QFF3(QFF):
         features = F.grid_sample(self.qff_volume, encs, mode='bilinear', align_corners=True).view(NF*2*C, -1)
         return features.T
 
+    def volume(self):
+        return self.qff_volume
+
+    def get_buffer(self):
+        # f = (torch.randn((num_freqs * 2 * x_dim, num_feats*num_corrs, num_quants, 1)) * self.std) ** (1 / 3)
+        F = self.num_freqs
+        C = self.num_feats
+        Q = self.num_quants
+        # Fx2xQxQxQxC
+        return self.qff_volume.data.view(F, 2, C, Q, Q, Q).permute(0, 1, 3, 4, 5, 2).cpu().numpy()
+
+
 class QFFRadianceField(torch.nn.Module):
     """QFF Radiance Field"""
 
     def __init__(
         self,
         num_dim: int = 3,
-        density_activation= lambda x: trunc_exp(x - 1),
+        density_activation= lambda x: trunc_exp(x),
         qff_type=1, 
         num_quants=80, 
         num_features=4,  
@@ -268,21 +281,39 @@ class QFFRadianceField(torch.nn.Module):
         # for QFF3, num_corrs will always be 1
         self.encoder = eval(f"QFF{qff_type}")(**args)
 
+        # self.geom_mlp =  nn.Linear(self.encoder.latent_dim, 1, bias=False)
+        # self.color_mlp =  nn.Linear(self.encoder.latent_dim, 12, bias=False)
 
-        self.geom_mlp = nn.Sequential(
-            nn.Linear(self.encoder.latent_dim, 64, bias=False),
-            nn.ReLU(),
-            nn.Linear(64, 16, bias=False),
-        )
-        self.color_mlp = nn.Sequential(
-            nn.Linear(31, 64, bias=False),
-            nn.ReLU(),
-            nn.Linear(64, 64, bias=False),
-            nn.ReLU(),
-            nn.Linear(64, 3, bias=False),
-        )
+        self.mlp =  nn.Linear(self.encoder.latent_dim, 16, bias=False)
+        # self.geom_mlp = nn.Sequential(
+        #     nn.Linear(self.encoder.latent_dim, 64, bias=False),
+        #     nn.ReLU(),
+        #     nn.Linear(64, 16, bias=False),
+        # )
+        # self.color_mlp = nn.Sequential(
+        #     nn.Linear(31, 64, bias=False),
+        #     nn.ReLU(),
+        #     nn.Linear(64, 64, bias=False),
+        #     nn.ReLU(),
+        #     nn.Linear(64, 3, bias=False),
+        # )
     def __repr__(self):
         return f'{self.encoder} => GeomMLP[{self.encoder.latent_dim} -> 64 -> Density[1] + 15] => ColorMLP[15 + SH[Dir[3] -> 16]-> 64 -> 64 -> RGB]'
+
+    def get_qff_buffer(self):
+        F = self.num_freqs
+        qff_buffer = self.encoder.get_buffer().astype(np.float16).tobytes()
+        qff_v = self.encoder.volume()
+        qff_dv = self.qff_v_to_qff_dv(qff_v)
+        qff_mean = qff_dv.view(F*2, -1).mean(1).sum(0).exp().item()
+        return qff_buffer, qff_mean
+
+    def qff_v_to_qff_dv(self, qff_v):
+        F = self.encoder.num_freqs
+        Q = self.encoder.num_quants
+        C = self.encoder.num_feats
+        return (qff_v.view(F*2, C, 1, Q, Q, Q) * self.mlp.weight.T.view(F*2, C, 16, 1, 1, 1))[:, :, -1]
+
 
     def query_density(self, x, return_feat: bool = False):
         enc = self.encoder(x)
@@ -306,3 +337,40 @@ class QFFRadianceField(torch.nn.Module):
             rgb = self.query_rgb(directions, embedding=embedding)
         return rgb, density  # type: ignore
 
+    # def query_density(self, x, return_feat: bool = False):
+    #     enc = self.encoder(x)
+    #     raw_sigma = self.geom_mlp(enc)
+    #     if return_feat:
+    #         return self.density_activation(raw_sigma), enc
+    #     else:
+    #         return self.density_activation(raw_sigma)
+
+    # def query_rgb(self, dir, embedding):
+    #     dir_feats = self.color_mlp(embedding).reshape(list(embedding.shape[:-1]) + [3, 4])
+    #     return ((dir_feats[..., :3] * dir.reshape(list(dir.shape[:-1]) + [1, 3])).sum(-1) + dir_feats[..., 3]).sigmoid()
+
+    # def forward(self, positions, directions=None):
+    #     if directions is not None:
+    #         density, embedding = self.query_density(positions, return_feat=True)
+    #         rgb = self.query_rgb(directions, embedding=embedding)
+    #     return rgb, density  # type: ignore
+    def query_density(self, x, return_feat: bool = False):
+        enc = self.encoder(x)
+        f = self.mlp(enc)
+        # return self.density_activation(f[..., -1:])
+        s = self.density_activation(f[..., -4:])
+        return (s[..., :3] / 6).abs().sum(-1, True) + s[..., 3:]
+
+    def forward(self, positions, directions=None):
+        enc = self.encoder(positions)
+        f = self.mlp(enc)
+        # rad = f[..., :-1].view(*f.shape[:-1], 3, 4)
+        rad = f[..., :-4].view(*f.shape[:-1], 3, 4)
+        # s = self.density_activation(f[..., -4:])
+
+        dxyz = torch.cat([directions, torch.ones_like(directions[..., :1])], 1).unsqueeze(-2)
+        rgb= (rad * dxyz).sum(-1).sigmoid()
+        # s = self.density_activation(f[..., -1:])
+        s = self.density_activation(f[..., -4:])
+        s = (s * dxyz).sum(-1, True)
+        return rgb, s
