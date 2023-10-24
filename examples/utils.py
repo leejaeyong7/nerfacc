@@ -18,7 +18,12 @@ from torch.utils.data._utils.collate import default_collate, default_collate_fn_
 from nerfacc.estimators.occ_grid import OccGridEstimator
 from nerfacc.estimators.prop_net import PropNetEstimator
 from nerfacc.grid import ray_aabb_intersect, traverse_grids
-from nerfacc.volrend import (
+# from nerfacc.volrend import (
+#     accumulate_along_rays_,
+#     render_weight_from_density,
+#     rendering,
+# )
+from volrender import (
     accumulate_along_rays_,
     render_weight_from_density,
     rendering,
